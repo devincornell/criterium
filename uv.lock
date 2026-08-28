@@ -1,0 +1,31 @@
+version = 1
+revision = 3
+requires-python = ">=3.14"
+
+[manifest]
+members = [
+    "app",
+    "criterium",
+    "criterium-workspace",
+]
+
+[[package]]
+name = "app"
+version = "0.1.0"
+source = { editable = "app" }
+dependencies = [
+    { name = "criterium" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "criterium", editable = "src/criterium" }]
+
+[[package]]
+name = "criterium"
+version = "0.1.0"
+source = { editable = "src/criterium" }
+
+[[package]]
+name = "criterium-workspace"
+version = "0.0.1"
+source = { virtual = "." }
