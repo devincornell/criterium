@@ -33,7 +33,7 @@ class CollectionUpdate(BaseModel):
     llm_schema: dict[str, typing.Any] | None = None
 
 class ProductCreate(BaseModel):
-    source_url: str
+    product_info: str
 
 class ProductExtractResult(BaseModel):
     source_url: str
@@ -116,10 +116,11 @@ def list_products(
 def extract_product(
     collection_id: int, 
     data: ProductCreate,
+    request: fastapi.Request,
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
     """
-    This endpoint will take the source_url, scrape it, and extract data
+    This endpoint will take the product_info query, scrape it, and extract data
     against the collection's schema.
     """
     try:
@@ -127,30 +128,47 @@ def extract_product(
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     
-    # Placeholder for actual extraction logic
-    # In reality:
-    # 1. Firecrawl scrape data.source_url
-    # 2. Gemini extract structured output
-    # 3. Save to DB
+    # Initialize our concrete Researcher implementation
+    researcher = criterium.FirecrawlGeminiResearcher(
+        ai_client=request.app.state.ai_client,
+        fc_app=request.app.state.fc_app
+    )
     
-    raw_source = f"Raw source placeholder for {data.source_url}"
-    extracted = {"mock": "data"}
+    # STEP 1: Discovery (Web Search & Scrape)
+    try:
+        discovery_result = researcher.discover(data.product_info)
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=f"Discovery failed: {e}")
 
+    # STEP 2: Deduplication & Audit Persistence
+    # We save the raw text to the database first. If the URL already exists, 
+    # it raises SourceUrlAlreadyExistsError, halting the pipeline BEFORE we waste tokens.
     try:
         product = db.add_product(
             collection_id=collection_id,
-            name=f"Extracted from {data.source_url}",
-            source_url=data.source_url,
-            raw_source_text=raw_source,
-            extracted_data=extracted
-        )
-        return ProductExtractResult(
-            source_url=data.source_url, 
-            status="success", 
-            product_id=product.id
+            name=f"Research: {data.product_info}",
+            source_url=discovery_result.source_url,
+            raw_source_text=discovery_result.raw_source_text,
+            extracted_data=None  # We haven't extracted data yet
         )
     except criterium.SourceUrlAlreadyExistsError as e:
         raise fastapi.HTTPException(status_code=409, detail=str(e))
+
+    # STEP 3: Constrained JSON Extraction
+    try:
+        extracted_data = researcher.extract(discovery_result.raw_source_text, collection)
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=f"LLM Extraction failed: {e}")
+
+    # STEP 4: Structured Persistence
+    # Update the newly created product row with the final LLM output
+    product = db.update_product_data(product.id, extracted_data)
+
+    return ProductExtractResult(
+        source_url=product.source_url, 
+        status="success", 
+        product_id=product.id
+    )
 
 @router.get("/collections/{collection_id}/products/{product_id}")
 def get_product(

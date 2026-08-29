@@ -108,8 +108,8 @@
                     <div class="flex justify-between items-center mb-6">
                         <h3 class="text-xl font-bold text-gray-900">Products / Items ({{ products.length }})</h3>
                         <div class="flex space-x-2">
-                            <input v-model="newProductUrl" type="text" placeholder="https://..." class="border border-gray-300 rounded-lg p-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                            <button @click="extractProduct" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 shadow-sm transition-colors">
+                            <input v-model="newProductQuery" type="text" placeholder="e.g. ThinkPad X1 Carbon Gen 11" class="border border-gray-300 rounded-lg p-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                            <button type="button" @click.prevent="extractProduct" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 shadow-sm transition-colors">
                                 Scrape & Extract
                             </button>
                         </div>
@@ -275,7 +275,7 @@
                 
                 editor: null,
                 viewEditor: null,
-                newProductUrl: ''
+                newProductQuery: ''
             }
         },
 
@@ -309,7 +309,7 @@
                 this.selectedCollection = col;
                 this.isEditing = false;
                 this.isCreating = false;
-                this.newProductUrl = '';
+                this.newProductQuery = '';
                 
                 // Fetch products for this collection
                 const res = await fetch(`/collections/${col.id}/products`);
@@ -408,16 +408,16 @@
                 await this.fetchCollections();
             },
             async extractProduct() {
-                if (!this.newProductUrl) return;
+                if (!this.newProductQuery) return;
                 
                 const res = await fetch(`/collections/${this.selectedCollection.id}/products`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source_url: this.newProductUrl })
+                    body: JSON.stringify({ product_info: this.newProductQuery })
                 });
                 
                 if (res.ok) {
-                    this.newProductUrl = '';
+                    this.newProductQuery = '';
                     // Refresh products list
                     const pRes = await fetch(`/collections/${this.selectedCollection.id}/products`);
                     this.products = await pRes.json();

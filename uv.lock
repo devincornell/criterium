@@ -328,11 +328,17 @@ name = "criterium"
 version = "0.1.0"
 source = { editable = "src/criterium" }
 dependencies = [
+    { name = "firecrawl-py" },
+    { name = "google-genai" },
     { name = "sqlalchemy" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "sqlalchemy", specifier = ">=2.0.52" }]
+requires-dist = [
+    { name = "firecrawl-py", specifier = ">=4.40.0" },
+    { name = "google-genai", specifier = ">=2.20.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.52" },
+]
 
 [[package]]
 name = "criterium-workspace"

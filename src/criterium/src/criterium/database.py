@@ -180,6 +180,18 @@ class ResearchDB:
             rows = conn.execute(stmt).fetchall()
             return models.ProductCollection.from_rows(rows)
 
+    def update_product_data(self, product_id: int, extracted_data: dict[str, typing.Any]) -> models.Product:
+        stmt = sqlalchemy.update(self.tabs.products).where(
+            self.tabs.products.c.id == product_id
+        ).values(extracted_data=extracted_data).returning(self.tabs.products)
+        
+        with self.engine.begin() as conn:
+            result = conn.execute(stmt)
+            row = result.fetchone()
+            if not row:
+                raise exceptions.ProductNotFoundError(f"Product with id {product_id} not found.")
+            return models.Product.from_row(row)
+
     def delete_product(self, product_id: int) -> None:
         stmt = sqlalchemy.delete(self.tabs.products).where(self.tabs.products.c.id == product_id)
         with self.engine.begin() as conn:
