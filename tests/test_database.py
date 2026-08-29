@@ -22,7 +22,7 @@ def db():
 
 def make_schema() -> ResearchSchemaObject:
     return ResearchSchemaObject(
-        properties={"title": ResearchSchemaString(is_required=True)}
+        properties={"title": ResearchSchemaString()}
     )
 
 
@@ -77,3 +77,26 @@ def test_duplicate_source_url_is_rejected(db: ResearchDB) -> None:
 
     with pytest.raises(SourceUrlAlreadyExistsError):
         db.add_product(**values)
+
+
+def test_research_job_claim_and_completion_are_persisted(db: ResearchDB) -> None:
+    collection = db.add_collection("Books", "Extract title", make_schema())
+    queued = db.add_research_job(collection.id, "Example")
+
+    assert queued.status == "queued"
+    running = db.claim_next_research_job()
+    assert running is not None
+    assert running.id == queued.id
+    assert running.status == "running"
+    assert running.attempt_count == 1
+
+    completed = db.complete_research_job(
+        job_id=running.id,
+        source_url="https://example.com/job",
+        raw_source_text="Evidence",
+        extracted_data={"title": "Example"},
+    )
+
+    assert completed.status == "succeeded"
+    assert completed.product_id is not None
+    assert db.get_product(completed.product_id).extracted_data == {"title": "Example"}

@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 class SchemaBase(BaseModel):
     description: str | None = None
-    is_required: bool = Field(default=False, exclude=True) # Exclude from JSON dump
+    nullable: bool | None = None
 
 class ResearchSchemaString(SchemaBase):
     type: Literal["string"] = "string"
@@ -30,13 +30,10 @@ class ResearchSchemaObject(SchemaBase):
     required: list[str] | None = None
 
     @model_validator(mode='after')
-    def compute_required(self):
-        if self.properties:
-            reqs = [k for k, v in self.properties.items() if getattr(v, "is_required", False)]
-            if reqs:
-                if self.required is None:
-                    self.required = []
-                self.required.extend(x for x in reqs if x not in self.required)
+    def require_all_properties(self):
+        self.required = list(self.properties) or None
+        for property_schema in self.properties.values():
+            property_schema.nullable = True
         return self
 
 # Discriminated union allows Pydantic to automatically resolve the correct subclass based on the "type" field
@@ -75,6 +72,21 @@ class CollectionResponse(BaseModel):
 class ProductCreate(BaseModel):
     product_info: str
 
+class ResearchJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    collection_id: int
+    product_info: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    stage: str | None
+    product_id: int | None
+    error_message: str | None
+    attempt_count: int
+    created_at: datetime.datetime
+    started_at: datetime.datetime | None
+    completed_at: datetime.datetime | None
+
 class ResearchReferenceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -84,13 +96,6 @@ class ResearchReferenceResponse(BaseModel):
     title: str | None
     provider: str
     created_at: datetime.datetime
-
-class ProductExtractResult(BaseModel):
-    source_url: str
-    status: str
-    product_id: int | None = None
-    error: str | None = None
-    references: list[ResearchReferenceResponse] = Field(default_factory=list)
 
 class ProductResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

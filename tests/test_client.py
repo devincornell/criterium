@@ -71,10 +71,17 @@ def test_create_collection_posts_serialized_schema() -> None:
 def test_extract_product_posts_to_nested_resource() -> None:
     response = FakeResponse(
         {
-            "source_url": "https://example.com",
-            "status": "success",
-            "product_id": 4,
-            "references": [],
+            "id": 8,
+            "collection_id": 3,
+            "product_info": "Example",
+            "status": "queued",
+            "stage": None,
+            "product_id": None,
+            "error_message": None,
+            "attempt_count": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "started_at": None,
+            "completed_at": None,
         }
     )
     session = FakeSession(response)
@@ -83,11 +90,12 @@ def test_extract_product_posts_to_nested_resource() -> None:
 
     result = client.extract_product(3, ProductCreate(product_info="Example"))
 
-    assert result.product_id == 4
+    assert result.id == 8
+    assert result.status == "queued"
     assert session.calls == [
         (
             "POST",
-            "http://example.test/collections/3/products",
+            "http://example.test/collections/3/research-jobs",
             {"product_info": "Example"},
         )
     ]

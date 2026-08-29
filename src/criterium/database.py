@@ -5,6 +5,7 @@ import sqlalchemy
 import sqlalchemy.exc
 from . import models
 from . import exceptions
+from . import schemas
 
 @dataclasses.dataclass(frozen=True)
 class ResearchDBTables:
@@ -12,6 +13,7 @@ class ResearchDBTables:
     research_collections: sqlalchemy.Table
     products: sqlalchemy.Table
     research_references: sqlalchemy.Table
+    research_jobs: sqlalchemy.Table
 
     @classmethod
     def from_metadata(cls, metadata: sqlalchemy.MetaData) -> typing.Self:
@@ -52,15 +54,31 @@ class ResearchDBTables:
             sqlalchemy.Column("created_at", sqlalchemy.DateTime, nullable=False),
             sqlalchemy.UniqueConstraint("product_id", "url", name="uq_research_reference_product_url"),
         )
+        research_jobs = sqlalchemy.Table(
+            "research_jobs",
+            metadata,
+            sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
+            sqlalchemy.Column("collection_id", sqlalchemy.Integer, sqlalchemy.ForeignKey("research_collections.id"), nullable=False, index=True),
+            sqlalchemy.Column("product_info", sqlalchemy.Text, nullable=False),
+            sqlalchemy.Column("status", sqlalchemy.String(32), nullable=False, index=True),
+            sqlalchemy.Column("stage", sqlalchemy.String(32), nullable=True),
+            sqlalchemy.Column("product_id", sqlalchemy.Integer, sqlalchemy.ForeignKey("products.id", ondelete="SET NULL"), nullable=True),
+            sqlalchemy.Column("error_message", sqlalchemy.Text, nullable=True),
+            sqlalchemy.Column("attempt_count", sqlalchemy.Integer, nullable=False, default=0),
+            sqlalchemy.Column("created_at", sqlalchemy.DateTime, nullable=False),
+            sqlalchemy.Column("started_at", sqlalchemy.DateTime, nullable=True),
+            sqlalchemy.Column("completed_at", sqlalchemy.DateTime, nullable=True),
+        )
         return cls(
             metadata=metadata,
             research_collections=research_collections,
             products=products,
             research_references=research_references,
+            research_jobs=research_jobs,
         )
 
     def all(self) -> list[sqlalchemy.Table]:
-        return [self.research_collections, self.products, self.research_references]
+        return [self.research_collections, self.products, self.research_references, self.research_jobs]
 
 @dataclasses.dataclass(frozen=True)
 class ResearchDB:
@@ -164,6 +182,9 @@ class ResearchDB:
         # Note: Depending on foreign key constraints, you might want cascading deletes enabled in the DB,
         # or manually delete products first. Here we assume manual deletion of products for safety.
         with self.engine.begin() as conn:
+            conn.execute(sqlalchemy.delete(self.tabs.research_jobs).where(
+                self.tabs.research_jobs.c.collection_id == collection_id
+            ))
             product_ids = sqlalchemy.select(self.tabs.products.c.id).where(
                 self.tabs.products.c.collection_id == collection_id
             )
@@ -178,6 +199,93 @@ class ResearchDB:
             if res.rowcount == 0:
                 raise exceptions.CollectionNotFoundError(f"Collection with id {collection_id} not found.")
 
+    def add_research_job(self, collection_id: int, product_info: str) -> models.ResearchJob:
+        self.get_collection(collection_id)
+        stmt = sqlalchemy.insert(self.tabs.research_jobs).values(
+            collection_id=collection_id,
+            product_info=product_info,
+            status="queued",
+            attempt_count=0,
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        ).returning(self.tabs.research_jobs)
+        with self.engine.begin() as conn:
+            row = conn.execute(stmt).fetchone()
+            if not row:
+                raise exceptions.CriteriumError("Failed to create research job.")
+            return models.ResearchJob.from_row(row)
+
+    def get_research_job(self, job_id: int) -> models.ResearchJob:
+        stmt = sqlalchemy.select(self.tabs.research_jobs).where(
+            self.tabs.research_jobs.c.id == job_id
+        )
+        with self.engine.connect() as conn:
+            row = conn.execute(stmt).fetchone()
+            if not row:
+                raise exceptions.ResearchJobNotFoundError(f"Research job with id {job_id} not found.")
+            return models.ResearchJob.from_row(row)
+
+    def get_research_jobs(self, collection_id: int | None = None) -> models.ResearchJobCollection:
+        stmt = sqlalchemy.select(self.tabs.research_jobs)
+        if collection_id is not None:
+            stmt = stmt.where(self.tabs.research_jobs.c.collection_id == collection_id)
+        stmt = stmt.order_by(self.tabs.research_jobs.c.created_at.desc())
+        with self.engine.connect() as conn:
+            return models.ResearchJobCollection.from_rows(conn.execute(stmt).fetchall())
+
+    def claim_next_research_job(self) -> models.ResearchJob | None:
+        next_job_id = sqlalchemy.select(self.tabs.research_jobs.c.id).where(
+            self.tabs.research_jobs.c.status == "queued"
+        ).order_by(
+            self.tabs.research_jobs.c.created_at,
+            self.tabs.research_jobs.c.id,
+        ).limit(1).scalar_subquery()
+        stmt = sqlalchemy.update(self.tabs.research_jobs).where(
+            self.tabs.research_jobs.c.id == next_job_id,
+            self.tabs.research_jobs.c.status == "queued",
+        ).values(
+            status="running",
+            stage="researching",
+            started_at=datetime.datetime.now(datetime.timezone.utc),
+            attempt_count=self.tabs.research_jobs.c.attempt_count + 1,
+        ).returning(self.tabs.research_jobs)
+        with self.engine.begin() as conn:
+            row = conn.execute(stmt).fetchone()
+            return models.ResearchJob.from_row(row) if row else None
+
+    def requeue_running_research_jobs(self) -> int:
+        stmt = sqlalchemy.update(self.tabs.research_jobs).where(
+            self.tabs.research_jobs.c.status == "running"
+        ).values(
+            status="queued",
+            stage=None,
+            started_at=None,
+        )
+        with self.engine.begin() as conn:
+            return conn.execute(stmt).rowcount
+
+    def update_research_job_stage(self, job_id: int, stage: str) -> None:
+        stmt = sqlalchemy.update(self.tabs.research_jobs).where(
+            self.tabs.research_jobs.c.id == job_id,
+            self.tabs.research_jobs.c.status == "running",
+        ).values(stage=stage)
+        with self.engine.begin() as conn:
+            conn.execute(stmt)
+
+    def fail_research_job(self, job_id: int, error_message: str) -> models.ResearchJob:
+        stmt = sqlalchemy.update(self.tabs.research_jobs).where(
+            self.tabs.research_jobs.c.id == job_id
+        ).values(
+            status="failed",
+            stage=None,
+            error_message=error_message,
+            completed_at=datetime.datetime.now(datetime.timezone.utc),
+        ).returning(self.tabs.research_jobs)
+        with self.engine.begin() as conn:
+            row = conn.execute(stmt).fetchone()
+            if not row:
+                raise exceptions.ResearchJobNotFoundError(f"Research job with id {job_id} not found.")
+            return models.ResearchJob.from_row(row)
+
     def add_product(
         self, 
         collection_id: int, 
@@ -187,6 +295,79 @@ class ResearchDB:
         extracted_data: dict[str, typing.Any] | None = None,
         references: typing.Iterable[models.ResearchReference] = (),
     ) -> models.Product:
+        with self.engine.begin() as conn:
+            try:
+                return self._insert_product(
+                    conn=conn,
+                    collection_id=collection_id,
+                    name=name,
+                    source_url=source_url,
+                    raw_source_text=raw_source_text,
+                    extracted_data=extracted_data,
+                    references=references,
+                )
+            except sqlalchemy.exc.IntegrityError as e:
+                self._raise_product_integrity_error(e, source_url)
+
+    def complete_research_job(
+        self,
+        job_id: int,
+        source_url: str,
+        raw_source_text: str,
+        extracted_data: dict[str, typing.Any],
+        references: typing.Iterable[models.ResearchReference] = (),
+    ) -> models.ResearchJob:
+        with self.engine.begin() as conn:
+            job_row = conn.execute(
+                sqlalchemy.select(self.tabs.research_jobs).where(
+                    self.tabs.research_jobs.c.id == job_id,
+                    self.tabs.research_jobs.c.status == "running",
+                )
+            ).fetchone()
+            if not job_row:
+                raise exceptions.ResearchJobNotFoundError(
+                    f"Running research job with id {job_id} not found."
+                )
+            job = models.ResearchJob.from_row(job_row)
+            try:
+                product = self._insert_product(
+                    conn=conn,
+                    collection_id=job.collection_id,
+                    name=f"Research: {job.product_info}",
+                    source_url=source_url,
+                    raw_source_text=raw_source_text,
+                    extracted_data=extracted_data,
+                    references=references,
+                )
+            except sqlalchemy.exc.IntegrityError as e:
+                self._raise_product_integrity_error(e, source_url)
+
+            completed_row = conn.execute(
+                sqlalchemy.update(self.tabs.research_jobs).where(
+                    self.tabs.research_jobs.c.id == job_id,
+                    self.tabs.research_jobs.c.status == "running",
+                ).values(
+                    status="succeeded",
+                    stage=None,
+                    product_id=product.id,
+                    error_message=None,
+                    completed_at=datetime.datetime.now(datetime.timezone.utc),
+                ).returning(self.tabs.research_jobs)
+            ).fetchone()
+            if not completed_row:
+                raise exceptions.CriteriumError("Failed to complete research job.")
+            return models.ResearchJob.from_row(completed_row)
+
+    def _insert_product(
+        self,
+        conn: sqlalchemy.Connection,
+        collection_id: int,
+        name: str,
+        source_url: str,
+        raw_source_text: str,
+        extracted_data: dict[str, typing.Any] | None,
+        references: typing.Iterable[models.ResearchReference],
+    ) -> models.Product:
         stmt = sqlalchemy.insert(self.tabs.products).values(
             collection_id=collection_id,
             name=name,
@@ -195,37 +376,37 @@ class ResearchDB:
             extracted_data=extracted_data,
             created_at=datetime.datetime.now(datetime.timezone.utc)
         ).returning(self.tabs.products)
-        
-        with self.engine.begin() as conn:
-            try:
-                result = conn.execute(stmt)
-                row = result.fetchone()
-                if not row:
-                    raise exceptions.CriteriumError("Failed to insert product.")
-                product = models.Product.from_row(row)
-                persisted_references = []
-                seen_urls = set()
-                for reference in references:
-                    if reference.url in seen_urls:
-                        continue
-                    seen_urls.add(reference.url)
-                    reference_stmt = sqlalchemy.insert(self.tabs.research_references).values(
-                        product_id=product.id,
-                        url=reference.url,
-                        title=reference.title,
-                        provider=reference.provider,
-                        created_at=datetime.datetime.now(datetime.timezone.utc),
-                    ).returning(self.tabs.research_references)
-                    reference_row = conn.execute(reference_stmt).fetchone()
-                    if not reference_row:
-                        raise exceptions.CriteriumError("Failed to insert research reference.")
-                    persisted_references.append(models.ResearchReference.from_row(reference_row))
-                return dataclasses.replace(product, references=tuple(persisted_references))
-            except sqlalchemy.exc.IntegrityError as e:
-                err_msg = str(e).lower()
-                if "unique constraint" in err_msg or "unique" in err_msg:
-                    raise exceptions.SourceUrlAlreadyExistsError(f"Product with url {source_url} already exists.") from e
-                raise
+        row = conn.execute(stmt).fetchone()
+        if not row:
+            raise exceptions.CriteriumError("Failed to insert product.")
+        product = models.Product.from_row(row)
+        persisted_references = []
+        seen_urls = set()
+        for reference in references:
+            if reference.url in seen_urls:
+                continue
+            seen_urls.add(reference.url)
+            reference_stmt = sqlalchemy.insert(self.tabs.research_references).values(
+                product_id=product.id,
+                url=reference.url,
+                title=reference.title,
+                provider=reference.provider,
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).returning(self.tabs.research_references)
+            reference_row = conn.execute(reference_stmt).fetchone()
+            if not reference_row:
+                raise exceptions.CriteriumError("Failed to insert research reference.")
+            persisted_references.append(models.ResearchReference.from_row(reference_row))
+        return dataclasses.replace(product, references=tuple(persisted_references))
+
+    @staticmethod
+    def _raise_product_integrity_error(error: sqlalchemy.exc.IntegrityError, source_url: str) -> typing.NoReturn:
+        err_msg = str(error).lower()
+        if "unique constraint" in err_msg or "unique" in err_msg:
+            raise exceptions.SourceUrlAlreadyExistsError(
+                f"Product with url {source_url} already exists."
+            ) from error
+        raise error
 
     def get_product(self, product_id: int) -> models.Product:
         stmt = sqlalchemy.select(self.tabs.products).where(self.tabs.products.c.id == product_id)

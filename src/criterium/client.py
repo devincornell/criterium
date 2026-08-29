@@ -54,13 +54,29 @@ class CriteriumClient:
         response.raise_for_status()
         return [schemas.ProductResponse.model_validate(item) for item in response.json()]
 
-    def extract_product(self, collection_id: int, request: schemas.ProductCreate) -> schemas.ProductExtractResult:
+    def extract_product(self, collection_id: int, request: schemas.ProductCreate) -> schemas.ResearchJobResponse:
+        return self.create_research_job(collection_id, request)
+
+    def create_research_job(self, collection_id: int, request: schemas.ProductCreate) -> schemas.ResearchJobResponse:
         response = self.session.post(
-            f"{self.base_url}/collections/{collection_id}/products", 
+            f"{self.base_url}/collections/{collection_id}/research-jobs",
             json=request.model_dump(exclude_none=True)
         )
         response.raise_for_status()
-        return schemas.ProductExtractResult.model_validate(response.json())
+        return schemas.ResearchJobResponse.model_validate(response.json())
+
+    def list_research_jobs(self, collection_id: int | None = None) -> list[schemas.ResearchJobResponse]:
+        path = "/research-jobs"
+        if collection_id is not None:
+            path = f"/collections/{collection_id}/research-jobs"
+        response = self.session.get(f"{self.base_url}{path}")
+        response.raise_for_status()
+        return [schemas.ResearchJobResponse.model_validate(item) for item in response.json()]
+
+    def get_research_job(self, job_id: int) -> schemas.ResearchJobResponse:
+        response = self.session.get(f"{self.base_url}/research-jobs/{job_id}")
+        response.raise_for_status()
+        return schemas.ResearchJobResponse.model_validate(response.json())
 
     def get_product(self, collection_id: int, product_id: int) -> schemas.ProductResponse:
         response = self.session.get(f"{self.base_url}/collections/{collection_id}/products/{product_id}")

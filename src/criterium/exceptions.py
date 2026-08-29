@@ -7,5 +7,8 @@ class CollectionNotFoundError(CriteriumError):
 class ProductNotFoundError(CriteriumError):
     """Raised when a requested product does not exist."""
 
+class ResearchJobNotFoundError(CriteriumError):
+    """Raised when a requested research job does not exist."""
+
 class SourceUrlAlreadyExistsError(CriteriumError):
     """Raised when attempting to add a product with a source_url that already exists."""

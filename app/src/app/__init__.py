@@ -1,4 +1,5 @@
 import pathlib
+import threading
 import uvicorn
 import fastapi
 from contextlib import asynccontextmanager
@@ -23,11 +24,34 @@ async def lifespan(app: fastapi.FastAPI):
         db_connect_string=db_url, 
         create_if_not_exists=True
     )
+    requeued_jobs = app.state.db.requeue_running_research_jobs()
+    if requeued_jobs:
+        print(f"Requeued {requeued_jobs} interrupted research job(s).")
+
+    researcher = getattr(app.state, "researcher", None) or criterium.GeminiSearchResearcher(
+        ai_client=app.state.ai_client
+    )
+    app.state.research_worker = criterium.ResearchJobWorker(
+        db=app.state.db,
+        researcher=researcher,
+        poll_interval=settings.research_worker_poll_seconds,
+    )
+    app.state.research_worker_stop = threading.Event()
+    app.state.research_worker_thread = threading.Thread(
+        target=app.state.research_worker.run_forever,
+        args=(app.state.research_worker_stop,),
+        name="criterium-research-worker",
+        daemon=True,
+    )
+    app.state.research_worker_thread.start()
 
     try:
         yield
     finally:
-        app.state.db.engine.dispose()
+        app.state.research_worker_stop.set()
+        app.state.research_worker_thread.join(timeout=5)
+        if not app.state.research_worker_thread.is_alive():
+            app.state.db.engine.dispose()
         print("Shutting down...")
 
 API_DESCRIPTION = """
@@ -61,11 +85,10 @@ When creating a new Collection, you must provide a `research_schema` using stand
           "title": { "type": "string" },
           "chronological_order": { "type": "integer" }
         },
-        "required": ["title"]
+        "required": ["title", "chronological_order"]
       }
-    }
   },
-  "required": ["title", "year"]
+  "required": ["title", "year", "series_books"]
 }
 ```
 

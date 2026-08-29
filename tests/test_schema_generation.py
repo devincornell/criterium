@@ -16,7 +16,6 @@ SUGGESTION = {
             "name": "model",
             "field_type": "string",
             "description": "Vehicle model name.",
-            "required": True,
         },
         {
             "name": "range_miles",
@@ -51,7 +50,8 @@ def test_gemini_suggester_validates_sdk_and_json_responses(response) -> None:
     result = suggester.suggest("Compare compact electric vehicles for city driving")
 
     assert result.name == "Compact Electric Vehicles"
-    assert result.research_schema.required == ["model"]
+    assert result.research_schema.required == ["model", "range_miles"]
+    assert result.research_schema.properties["range_miles"].nullable is True
     assert models.request["model"] == "gemini-3.7-flash"
     response_schema = models.request["config"].response_schema.model_json_schema()
     assert "additionalProperties" not in json.dumps(response_schema)
@@ -103,7 +103,6 @@ def test_nested_suggested_fields_convert_to_research_schema() -> None:
                 "name": "name",
                 "field_type": "string",
                 "description": "A feature name.",
-                "required": True,
             }],
         },
     })

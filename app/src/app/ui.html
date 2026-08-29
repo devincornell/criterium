@@ -119,9 +119,21 @@
                         <h3 class="text-xl font-bold text-gray-900">Products / Items ({{ products.length }})</h3>
                         <div class="flex space-x-2">
                             <input v-model="newProductQuery" type="text" placeholder="e.g. ThinkPad X1 Carbon Gen 11" class="border border-gray-300 rounded-lg p-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                            <button type="button" @click.prevent="extractProduct" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 shadow-sm transition-colors">
-                                Research & Extract
+                            <button type="button" @click.prevent="extractProduct" :disabled="isSubmittingResearch" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 shadow-sm transition-colors">
+                                {{ isSubmittingResearch ? 'Queueing...' : 'Research & Extract' }}
                             </button>
+                        </div>
+                    </div>
+
+                    <div v-if="researchJobs.length" class="mb-5 space-y-2">
+                        <div v-for="job in researchJobs" :key="job.id" class="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3 text-sm">
+                            <div>
+                                <span class="font-medium text-gray-900">{{ job.product_info }}</span>
+                                <p v-if="job.error_message" class="text-red-600 mt-1">{{ job.error_message }}</p>
+                            </div>
+                            <span :class="job.status === 'failed' ? 'text-red-600' : job.status === 'succeeded' ? 'text-green-700' : 'text-blue-600'" class="font-medium capitalize">
+                                {{ job.stage || job.status }}
+                            </span>
                         </div>
                     </div>
                     
@@ -176,7 +188,7 @@
             for (let prop of node.properties) {
                 if (!prop.name) continue; // Skip empty names
                 schema.properties[prop.name] = toJSONSchema(prop);
-                if (prop.required) schema.required.push(prop.name);
+                schema.required.push(prop.name);
             }
             if (schema.required.length === 0) delete schema.required;
         } else if (node.type === 'array') {
@@ -185,22 +197,20 @@
         return schema;
     }
 
-    function fromJSONSchema(schema, name = '', isRequired = false) {
+    function fromJSONSchema(schema, name = '') {
         let node = {
             name: name,
             type: schema.type || 'string',
             description: schema.description || '',
-            required: isRequired,
             properties: [],
             items: null
         };
         if (node.type === 'object' && schema.properties) {
-            let reqArray = schema.required || [];
             for (let [key, val] of Object.entries(schema.properties)) {
-                node.properties.push(fromJSONSchema(val, key, reqArray.includes(key)));
+                node.properties.push(fromJSONSchema(val, key));
             }
         } else if (node.type === 'array' && schema.items) {
-            node.items = fromJSONSchema(schema.items, '', false);
+            node.items = fromJSONSchema(schema.items);
         }
         return node;
     }
@@ -228,10 +238,6 @@
                         <option value="object">Object</option>
                         <option value="array">Array</option>
                     </select>
-
-                    <label v-if="!isRoot && !isArrayItem" class="flex items-center text-sm text-gray-600 cursor-pointer">
-                        <input type="checkbox" v-model="node.required" class="mr-1 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"> Required
-                    </label>
 
                     <button type="button" v-if="!isRoot" @click.prevent="$emit('remove')" class="ml-auto text-gray-400 hover:text-red-500 transition-colors" title="Remove Field">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -274,7 +280,7 @@
         methods: {
             addProperty() {
                 this.node.properties.push({ 
-                    name: '', type: 'string', description: '', required: false, properties: [], items: null 
+                    name: '', type: 'string', description: '', properties: [], items: null
                 });
             }
         }
@@ -286,6 +292,7 @@
                 collections: [],
                 selectedCollection: null,
                 products: [],
+                researchJobs: [],
                 isEditing: false,
                 isCreating: false,
                 form: { name: '', extraction_prompt: '', research_schema: {} },
@@ -298,7 +305,9 @@
                 viewEditor: null,
                 newProductQuery: '',
                 suggestionDescription: '',
-                isSuggesting: false
+                isSuggesting: false,
+                isSubmittingResearch: false,
+                jobPollTimer: null
             }
         },
 
@@ -317,7 +326,7 @@
                     // Code -> Visual
                     try {
                         this.form.research_schema = this.editor.get();
-                        this.internalSchema = fromJSONSchema(this.form.research_schema, 'root', false);
+                        this.internalSchema = fromJSONSchema(this.form.research_schema, 'root');
                         this.editorMode = 'visual';
                     } catch(e) {
                         alert("Please fix JSON syntax errors before switching to Visual Builder.");
@@ -337,6 +346,7 @@
                 // Fetch products for this collection
                 const res = await fetch(`/collections/${col.id}/products`);
                 this.products = await res.json();
+                await this.refreshResearchJobs();
                 
                 // Initialize the read-only JSON editor for the schema
                 this.$nextTick(() => {
@@ -368,7 +378,7 @@
                 }
                 
                 // Initialize Visual Editor
-                this.internalSchema = fromJSONSchema(this.form.research_schema, 'root', false);
+                this.internalSchema = fromJSONSchema(this.form.research_schema, 'root');
                 this.editorMode = 'visual';
 
                 // Initialize the code JSON editor for editing
@@ -399,7 +409,7 @@
                     }
                     const suggestion = await res.json();
                     this.form = suggestion;
-                    this.internalSchema = fromJSONSchema(suggestion.research_schema, 'root', false);
+                    this.internalSchema = fromJSONSchema(suggestion.research_schema, 'root');
                     if (this.editor) this.editor.set(suggestion.research_schema);
                 } catch (e) {
                     alert("Suggestion Error: " + e.message);
@@ -456,21 +466,37 @@
             },
             async extractProduct() {
                 if (!this.newProductQuery) return;
-                
-                const res = await fetch(`/collections/${this.selectedCollection.id}/products`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_info: this.newProductQuery })
-                });
-                
-                if (res.ok) {
+                this.isSubmittingResearch = true;
+                try {
+                    const res = await fetch(`/collections/${this.selectedCollection.id}/research-jobs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ product_info: this.newProductQuery })
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(JSON.stringify(err));
+                    }
+                    const job = await res.json();
                     this.newProductQuery = '';
-                    // Refresh products list
-                    const pRes = await fetch(`/collections/${this.selectedCollection.id}/products`);
-                    this.products = await pRes.json();
-                } else {
-                    const err = await res.json();
-                    alert("Extraction Error: " + JSON.stringify(err));
+                    this.researchJobs.unshift(job);
+                } catch (e) {
+                    alert("Research Error: " + e.message);
+                } finally {
+                    this.isSubmittingResearch = false;
+                }
+            },
+            async refreshResearchJobs() {
+                if (!this.selectedCollection) return;
+                const collectionId = this.selectedCollection.id;
+                const res = await fetch(`/collections/${collectionId}/research-jobs`);
+                if (!res.ok || this.selectedCollection?.id !== collectionId) return;
+                const previousCompleted = this.researchJobs.filter(job => job.status === 'succeeded').length;
+                this.researchJobs = await res.json();
+                const completed = this.researchJobs.filter(job => job.status === 'succeeded').length;
+                if (completed !== previousCompleted) {
+                    const productsResponse = await fetch(`/collections/${collectionId}/products`);
+                    this.products = await productsResponse.json();
                 }
             },
             async deleteProduct(id) {
@@ -482,6 +508,10 @@
         },
         mounted() {
             this.fetchCollections();
+            this.jobPollTimer = setInterval(() => this.refreshResearchJobs(), 2000);
+        },
+        beforeUnmount() {
+            clearInterval(this.jobPollTimer);
         }
     });
     

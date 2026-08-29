@@ -75,3 +75,29 @@ class ProductCollection(list[Product]):
     @classmethod
     def from_rows(cls, rows: typing.Iterable[sqlalchemy.Row]) -> typing.Self:
         return cls([Product.from_row(r) for r in rows])
+
+@dataclasses.dataclass(frozen=True)
+class ResearchJob:
+    id: int
+    collection_id: int
+    product_info: str
+    status: str
+    stage: str | None
+    product_id: int | None
+    error_message: str | None
+    attempt_count: int
+    created_at: datetime.datetime
+    started_at: datetime.datetime | None
+    completed_at: datetime.datetime | None
+
+    @classmethod
+    def from_row(cls, row: sqlalchemy.Row) -> typing.Self:
+        return cls(**{
+            field.name: row._mapping[field.name]
+            for field in dataclasses.fields(cls)
+        })
+
+class ResearchJobCollection(list[ResearchJob]):
+    @classmethod
+    def from_rows(cls, rows: typing.Iterable[sqlalchemy.Row]) -> typing.Self:
+        return cls([ResearchJob.from_row(row) for row in rows])

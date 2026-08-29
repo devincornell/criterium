@@ -19,6 +19,8 @@ make run
 
 Tests replace external Gemini and Firecrawl calls with deterministic fakes. Live API calls are not part of the default test suite.
 
+Every property in a collection's research schema is required. When reliable evidence is unavailable, researchers must return an explicit `null` value rather than omit the property or invent a value.
+
 ## Collection Suggestions
 
 `POST /collections/suggest-schema` accepts a plain-language collection description and returns a proposed name, extraction prompt, and validated research schema. The new-collection form exposes the same workflow through **Generate Starter**.

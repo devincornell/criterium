@@ -7,6 +7,11 @@ from firecrawl import Firecrawl
 from firecrawl.types import Document, ScrapeOptions
 from . import models
 
+REQUIRED_OUTPUT_INSTRUCTION = (
+    "Return every field defined by the response schema. If reliable evidence for a field "
+    "is unavailable, return null for that field instead of omitting it or guessing."
+)
+
 @dataclasses.dataclass(frozen=True)
 class DiscoveryResult:
     source_url: str
@@ -80,7 +85,7 @@ class FirecrawlGeminiResearcher:
             model=self.model_name,
             contents=f"Analyze the source text below and extract specifications.\n\nContext:\n{text}",
             config=types.GenerateContentConfig(
-                system_instruction=collection.extraction_prompt,
+                system_instruction=f"{collection.extraction_prompt}\n\n{REQUIRED_OUTPUT_INSTRUCTION}",
                 response_mime_type="application/json",
                 response_schema=collection.research_schema.model_dump(exclude_none=True)
             ),
@@ -156,7 +161,7 @@ class GeminiSearchResearcher:
             model=self.model_name,
             contents=f"Extract the requested data from this grounded research.\n\nResearch:\n{text}",
             config=types.GenerateContentConfig(
-                system_instruction=collection.extraction_prompt,
+                system_instruction=f"{collection.extraction_prompt}\n\n{REQUIRED_OUTPUT_INSTRUCTION}",
                 response_mime_type="application/json",
                 response_schema=collection.research_schema.model_dump(exclude_none=True),
             ),
@@ -174,6 +179,7 @@ class GeminiSearchResearcher:
             f"Use Google Search to research this subject: {product_info}\n\n"
             f"Research objective:\n{collection.extraction_prompt}\n\n"
             f"Find reliable evidence for every field in this requested schema:\n{schema}\n\n"
+            "Explicitly note fields for which reliable evidence is unavailable, and do not guess. "
             "Return a comprehensive factual summary grounded in the web sources you used."
         )
         extracted = self.extract(discovery.raw_source_text, collection)

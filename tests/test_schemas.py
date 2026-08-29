@@ -9,11 +9,11 @@ from criterium.schemas import (
 def test_research_schema_computes_required_fields_recursively() -> None:
     schema = ResearchSchemaObject(
         properties={
-            "title": ResearchSchemaString(is_required=True),
+            "title": ResearchSchemaString(),
             "items": ResearchSchemaArray(
                 items=ResearchSchemaObject(
                     properties={
-                        "position": ResearchSchemaInteger(is_required=True),
+                        "position": ResearchSchemaInteger(),
                     }
                 )
             ),
@@ -22,15 +22,20 @@ def test_research_schema_computes_required_fields_recursively() -> None:
 
     dumped = schema.model_dump(exclude_none=True)
 
-    assert dumped["required"] == ["title"]
+    assert dumped["required"] == ["title", "items"]
     assert dumped["properties"]["items"]["items"]["required"] == ["position"]
-    assert "is_required" not in str(dumped)
+    assert dumped["properties"]["title"]["nullable"] is True
+    assert dumped["properties"]["items"]["nullable"] is True
+    assert dumped["properties"]["items"]["items"]["properties"]["position"]["nullable"] is True
 
 
-def test_explicit_required_fields_are_preserved_without_duplicates() -> None:
+def test_partial_required_list_is_normalized_to_all_properties() -> None:
     schema = ResearchSchemaObject(
-        properties={"title": ResearchSchemaString(is_required=True)},
+        properties={
+            "title": ResearchSchemaString(),
+            "year": ResearchSchemaInteger(),
+        },
         required=["title"],
     )
 
-    assert schema.required == ["title"]
+    assert schema.required == ["title", "year"]

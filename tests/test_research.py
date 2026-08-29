@@ -15,7 +15,7 @@ def make_collection() -> ResearchCollection:
         name="Books",
         extraction_prompt="Extract the title.",
         research_schema=ResearchSchemaObject(
-            properties={"title": ResearchSchemaString(is_required=True)}
+            properties={"title": ResearchSchemaString()}
         ),
         created_at=datetime.datetime.now(datetime.timezone.utc),
     )
@@ -57,6 +57,8 @@ def test_gemini_research_uses_search_then_structured_extraction() -> None:
     assert result.references[0].url == "https://example.com/source"
     assert models.calls[0]["config"].tools[0].google_search is not None
     assert models.calls[1]["config"].response_schema["required"] == ["title"]
+    assert models.calls[1]["config"].response_schema["properties"]["title"]["nullable"] is True
+    assert "return null" in models.calls[1]["config"].system_instruction.lower()
 
 
 def test_gemini_research_requires_grounded_sources() -> None:

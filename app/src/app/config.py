@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr
     firecrawl_api_key: SecretStr
     db_url: str|None = "sqlite:///:memory:"
+    research_worker_poll_seconds: float = 0.5
 
     # This tells pydantic-settings to look for a .env file in the root
     model_config = SettingsConfigDict(

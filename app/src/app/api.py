@@ -6,7 +6,7 @@ import criterium
 from criterium.schemas import (
     CollectionCreate, CollectionUpdate, CollectionResponse,
     CollectionSuggestionRequest, CollectionSuggestionResponse,
-    ProductCreate, ProductExtractResult, ProductResponse, ResearchReferenceResponse
+    ProductCreate, ProductResponse, ResearchJobResponse
 )
 
 router = fastapi.APIRouter()
@@ -98,6 +98,31 @@ def delete_collection(
 
 # --- Products Endpoints ---
 
+@router.get("/research-jobs", response_model=list[ResearchJobResponse])
+def list_research_jobs(db: criterium.ResearchDB = fastapi.Depends(get_db)):
+    return db.get_research_jobs()
+
+@router.get("/research-jobs/{job_id}", response_model=ResearchJobResponse)
+def get_research_job(
+    job_id: int,
+    db: criterium.ResearchDB = fastapi.Depends(get_db),
+):
+    try:
+        return db.get_research_job(job_id)
+    except criterium.ResearchJobNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+@router.get("/collections/{collection_id}/research-jobs", response_model=list[ResearchJobResponse])
+def list_collection_research_jobs(
+    collection_id: int,
+    db: criterium.ResearchDB = fastapi.Depends(get_db),
+):
+    try:
+        db.get_collection(collection_id)
+    except criterium.CollectionNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+    return db.get_research_jobs(collection_id=collection_id)
+
 @router.get("/collections/{collection_id}/products", response_model=list[ProductResponse])
 def list_products(
     collection_id: int, 
@@ -105,48 +130,32 @@ def list_products(
 ):
     return db.get_products_by_collection(collection_id)
 
-@router.post("/collections/{collection_id}/products", response_model=ProductExtractResult)
-def extract_product(
+@router.post(
+    "/collections/{collection_id}/products",
+    response_model=ResearchJobResponse,
+    status_code=fastapi.status.HTTP_202_ACCEPTED,
+    deprecated=True,
+)
+@router.post(
+    "/collections/{collection_id}/research-jobs",
+    response_model=ResearchJobResponse,
+    status_code=fastapi.status.HTTP_202_ACCEPTED,
+)
+def create_research_job(
     collection_id: int, 
     data: ProductCreate,
     db: criterium.ResearchDB = fastapi.Depends(get_db),
-    researcher: criterium.Researcher = fastapi.Depends(get_researcher),
 ):
     """
-    This endpoint will take the product_info query, scrape it, and extract data
-    against the collection's schema.
+    Queue product research and return immediately with its job status.
     """
     try:
-        collection = db.get_collection(collection_id)
+        return db.add_research_job(
+            collection_id=collection_id,
+            product_info=data.product_info,
+        )
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
-    
-    try:
-        research_result = researcher.research(data.product_info, collection)
-    except Exception as e:
-        raise fastapi.HTTPException(status_code=500, detail=f"Research failed: {e}")
-
-    try:
-        product = db.add_product(
-            collection_id=collection_id,
-            name=f"Research: {data.product_info}",
-            source_url=research_result.source_url,
-            raw_source_text=research_result.raw_source_text,
-            extracted_data=research_result.extracted_data,
-            references=research_result.references,
-        )
-    except criterium.SourceUrlAlreadyExistsError as e:
-        raise fastapi.HTTPException(status_code=409, detail=str(e))
-
-    return ProductExtractResult(
-        source_url=product.source_url, 
-        status="success", 
-        product_id=product.id,
-        references=[
-            ResearchReferenceResponse.model_validate(reference)
-            for reference in product.references
-        ],
-    )
 
 @router.get("/collections/{collection_id}/products/{product_id}", response_model=ProductResponse)
 def get_product(

@@ -14,7 +14,6 @@ class _SuggestedLeafField(BaseModel):
     name: str
     field_type: ScalarFieldType
     description: str
-    required: bool = False
 
 
 class _SuggestedArrayItem(BaseModel):
@@ -27,7 +26,6 @@ class _SuggestedField(BaseModel):
     name: str
     field_type: typing.Literal["string", "integer", "number", "boolean", "array", "object"]
     description: str
-    required: bool = False
     properties: list[_SuggestedLeafField] = Field(default_factory=list)
     items: _SuggestedArrayItem | None = None
 
@@ -60,10 +58,8 @@ def _object_schema(
         child.name: _scalar_schema(child.field_type, child.description)
         for child in fields
     }
-    required = [child.name for child in fields if child.required]
     return schemas.ResearchSchemaObject(
         properties=properties,
-        required=required or None,
         description=description,
     )
 
@@ -108,8 +104,9 @@ class GeminiCollectionSuggester:
                 "Choose a concise collection name, write an extraction prompt that tells a "
                 "research model exactly what to find, and propose fields for a root object schema. "
                 "For object fields, put nested fields in properties. For array fields, provide an "
-                "items field definition. Include useful descriptions and mark only essential "
-                "fields as required. Keep the schema focused enough to compare items consistently."
+                "items field definition. Include useful descriptions. Every proposed field will be "
+                "required, so keep the schema focused enough to compare items consistently and tell "
+                "the research model to use null when reliable evidence is unavailable."
             ),
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -130,12 +127,10 @@ class GeminiCollectionSuggester:
             field.name: _to_research_schema(field)
             for field in suggestion.fields
         }
-        required = [field.name for field in suggestion.fields if field.required]
         return schemas.CollectionSuggestionResponse(
             name=suggestion.name,
             extraction_prompt=suggestion.extraction_prompt,
             research_schema=schemas.ResearchSchemaObject(
                 properties=properties,
-                required=required or None,
             ),
         )
