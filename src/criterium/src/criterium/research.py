@@ -49,6 +49,14 @@ class FirecrawlGeminiResearcher:
             items = search_results.data
         elif isinstance(search_results, dict):
             items = search_results.get("web") or search_results.get("data") or []
+        
+        # NOTE: some versions of firecrawl return a dictionary wrapped in a dictionary 
+        # (e.g. {'web': [{'url': ...}]}). The check above handles it if search_results is a dict.
+        
+        # Pydantic BaseModels can be converted to dict
+        if not items and hasattr(search_results, "model_dump"):
+            dump = search_results.model_dump()
+            items = dump.get("web") or dump.get("data") or []
 
         if not items:
             raise ValueError(f"No search results found for: {product_info}")
