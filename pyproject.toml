@@ -1,8 +1,48 @@
 [project]
-name = "criterium-workspace"
-version = "0.0.1"
-requires-python = ">=3.12"
-dependencies = []
+name = "criterium"
+version = "0.1.0"
+description = "Tool for researching and comparing products according to predefined criteria."
+readme = "README.md"
+authors = [
+	{ name = "Devin Cornell", email = "devinj.cornell@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+	"firecrawl-py>=4.40.0",
+	"google-genai>=2.20.0",
+	"pydantic>=2.13.5",
+	"requests>=2.34.2",
+	"sqlalchemy>=2.0.52",
+]
 
 [tool.uv.workspace]
-members = ["src/*", "app"]
+members = ["app"]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "app/tests"]
+addopts = "-ra --strict-config --strict-markers"
+markers = [
+	"integration: in-process integration tests",
+	"live: tests that call external services",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["criterium", "app"]
+omit = ["tests/*", "app/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80

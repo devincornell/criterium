@@ -6,11 +6,10 @@ run:
 
 # Sync workspace dependencies and update the virtual environment
 sync:
-	uv sync
+	uv sync --all-packages
 
-# Run tests (placeholder for future)
 test:
-	@echo "No tests configured yet. You can add pytest and run: uv run pytest"
+	uv run --all-packages pytest --cov --cov-report=term-missing
 
 # Clean up python caches and the virtual environment
 clean:

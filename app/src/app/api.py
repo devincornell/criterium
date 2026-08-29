@@ -23,6 +23,9 @@ def serve_ui():
 def get_db(request: fastapi.Request) -> criterium.ResearchDB:
     return request.app.state.db
 
+def get_researcher(request: fastapi.Request) -> criterium.Researcher:
+    return criterium.GeminiSearchResearcher(ai_client=request.app.state.ai_client)
+
 
 # --- Collections Endpoints ---
 
@@ -92,8 +95,8 @@ def list_products(
 def extract_product(
     collection_id: int, 
     data: ProductCreate,
-    request: fastapi.Request,
-    db: criterium.ResearchDB = fastapi.Depends(get_db)
+    db: criterium.ResearchDB = fastapi.Depends(get_db),
+    researcher: criterium.Researcher = fastapi.Depends(get_researcher),
 ):
     """
     This endpoint will take the product_info query, scrape it, and extract data
@@ -104,10 +107,6 @@ def extract_product(
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     
-    researcher = criterium.GeminiSearchResearcher(
-        ai_client=request.app.state.ai_client,
-    )
-
     try:
         research_result = researcher.research(data.product_info, collection)
     except Exception as e:

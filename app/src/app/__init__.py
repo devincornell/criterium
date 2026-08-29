@@ -6,13 +6,12 @@ from contextlib import asynccontextmanager
 import criterium
 from google import genai
 from firecrawl import Firecrawl
-from .config import settings
+from .config import Settings, get_settings
 from .api import router
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
-    # Initialize your clients using the pydantic settings
-    # We use get_secret_value() because we defined them as SecretStr to prevent accidental logging
+    settings = getattr(app.state, "settings", None) or get_settings()
     app.state.ai_client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
     app.state.fc_app = Firecrawl(api_key=settings.firecrawl_api_key.get_secret_value())
     print("API Clients initialized successfully!")
@@ -25,8 +24,11 @@ async def lifespan(app: fastapi.FastAPI):
         create_if_not_exists=True
     )
 
-    yield
-    print("Shutting down...")
+    try:
+        yield
+    finally:
+        app.state.db.engine.dispose()
+        print("Shutting down...")
 
 API_DESCRIPTION = """
 # Dynamic Schema Research Agent
@@ -70,13 +72,15 @@ When creating a new Collection, you must provide a `research_schema` using stand
 **Pro-Tip:** If you prefer Python, you can write a Pydantic `BaseModel` and call `MyModel.model_json_schema()` to automatically generate the JSON Schema equivalent to paste into your Collection!
 """
 
-def create_app() -> fastapi.FastAPI:
+def create_app(settings: Settings | None = None) -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         title="Criterium Research API", 
         description=API_DESCRIPTION,
         version="0.1.0",
         lifespan=lifespan
     )
+    if settings is not None:
+        app.state.settings = settings
     app.include_router(router)
     return app
 

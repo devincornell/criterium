@@ -1,3 +1,5 @@
+import functools
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
@@ -13,5 +15,6 @@ class Settings(BaseSettings):
         extra="ignore"  # Ignore other environment variables not defined here
     )
 
-# Instantiate the settings once to be imported anywhere in the app
-settings = Settings()
+@functools.lru_cache
+def get_settings() -> Settings:
+    return Settings()
