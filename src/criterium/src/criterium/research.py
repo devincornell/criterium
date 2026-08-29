@@ -38,20 +38,45 @@ class FirecrawlGeminiResearcher:
         search_results = self.fc_app.search(
             query=f"{product_info} technical specifications reviews",
             limit=1,
-            scrapeOptions={"formats": ["markdown"], "onlyMainContent": True}
+            scrape_options={"formats": ["markdown"], "onlyMainContent": True}
         )
         
-        if not search_results or not search_results.get("data"):
+        # In firecrawl-py v4, search results are placed under .web (or .data in v1)
+        items = []
+        if hasattr(search_results, "web") and search_results.web:
+            items = search_results.web
+        elif hasattr(search_results, "data") and search_results.data:
+            items = search_results.data
+        elif isinstance(search_results, dict):
+            items = search_results.get("web") or search_results.get("data") or []
+
+        if not items:
             raise ValueError(f"No search results found for: {product_info}")
             
-        top_result = search_results["data"][0]
-        source_url = top_result.get("url", "")
-        raw_source_text = top_result.get("markdown", "")
+        top_result = items[0]
         
+        # Extract markdown and URL safely across Document / SearchResultWeb / dict types
+        raw_source_text = getattr(top_result, "markdown", None)
+        source_url = getattr(top_result, "url", None)
+        
+        if not source_url and hasattr(top_result, "metadata") and top_result.metadata:
+            source_url = getattr(top_result.metadata, "url", None) or getattr(top_result.metadata, "source_url", None)
+            
+        if isinstance(top_result, dict):
+            raw_source_text = raw_source_text or top_result.get("markdown")
+            source_url = source_url or top_result.get("url")
+            if not source_url and "metadata" in top_result and isinstance(top_result["metadata"], dict):
+                source_url = top_result["metadata"].get("url") or top_result["metadata"].get("source_url")
+                
+        # If scrape_options wasn't returned inline, fall back to scraping the URL directly
+        if source_url and not raw_source_text:
+            scrape_res = self.fc_app.scrape(source_url)
+            raw_source_text = getattr(scrape_res, "markdown", None) or (scrape_res.get("markdown") if isinstance(scrape_res, dict) else None)
+
         if not source_url or not raw_source_text:
             raise ValueError("Firecrawl returned incomplete data (missing url or markdown).")
             
-        return DiscoveryResult(source_url=source_url, raw_source_text=raw_source_text)
+        return DiscoveryResult(source_url=str(source_url), raw_source_text=str(raw_source_text))
 
     def extract(self, text: str, collection: models.ResearchCollection) -> dict[str, typing.Any]:
         import json

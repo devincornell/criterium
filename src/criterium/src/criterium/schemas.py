@@ -55,12 +55,14 @@ class CollectionUpdate(BaseModel):
     extraction_prompt: str | None = None
     research_schema: ResearchSchemaDef | None = None
 
+import datetime
+
 class CollectionResponse(BaseModel):
     id: int
     name: str
     extraction_prompt: str
     research_schema: ResearchSchemaDef
-    created_at: str
+    created_at: datetime.datetime
 
 class ProductCreate(BaseModel):
     product_info: str
@@ -78,4 +80,4 @@ class ProductResponse(BaseModel):
     source_url: str
     raw_source_text: str
     extracted_data: dict[str, typing.Any] | None
-    created_at: str
+    created_at: datetime.datetime
