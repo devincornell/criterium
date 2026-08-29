@@ -80,12 +80,12 @@ class ResearchDB:
         self, 
         name: str, 
         extraction_prompt: str, 
-        research_schema: models.ResearchSchema
+        research_schema: schemas.ResearchSchemaDef
     ) -> models.ResearchCollection:
         stmt = sqlalchemy.insert(self.tabs.research_collections).values(
             name=name,
             extraction_prompt=extraction_prompt,
-            research_schema=research_schema.to_dict(),
+            research_schema=research_schema.model_dump(exclude_none=True),
             created_at=datetime.datetime.now(datetime.timezone.utc)
         ).returning(self.tabs.research_collections)
         
@@ -115,7 +115,7 @@ class ResearchDB:
         collection_id: int,
         name: str | None = None,
         extraction_prompt: str | None = None,
-        research_schema: models.ResearchSchema | None = None
+        research_schema: schemas.ResearchSchemaDef | None = None
     ) -> models.ResearchCollection:
         update_values = {}
         if name is not None:
@@ -123,7 +123,7 @@ class ResearchDB:
         if extraction_prompt is not None:
             update_values["extraction_prompt"] = extraction_prompt
         if research_schema is not None:
-            update_values["research_schema"] = research_schema.to_dict()
+            update_values["research_schema"] = research_schema.model_dump(exclude_none=True)
             
         if not update_values:
             return self.get_collection(collection_id)

@@ -28,21 +28,18 @@ def get_db(request: fastapi.Request) -> criterium.ResearchDB:
 
 @router.get("/collections", response_model=list[CollectionResponse])
 def list_collections(db: criterium.ResearchDB = fastapi.Depends(get_db)):
-    collections = db.get_all_collections()
-    return collections.to_dict_list()
+    return db.get_all_collections()
 
 @router.post("/collections", response_model=CollectionResponse)
 def create_collection(
     data: CollectionCreate,
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
-    schema_model = criterium.models.ResearchSchema.from_dict(data.research_schema.model_dump(exclude_none=True))
-    collection = db.add_collection(
+    return db.add_collection(
         name=data.name,
         extraction_prompt=data.extraction_prompt,
-        research_schema=schema_model
+        research_schema=data.research_schema
     )
-    return collection.to_dict()
 
 @router.get("/collections/{collection_id}", response_model=CollectionResponse)
 def get_collection(
@@ -50,8 +47,7 @@ def get_collection(
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
     try:
-        collection = db.get_collection(collection_id)
-        return collection.to_dict()
+        return db.get_collection(collection_id)
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
@@ -62,18 +58,12 @@ def update_collection(
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
     try:
-        schema_model = None
-        if data.research_schema is not None:
-            schema_model = criterium.models.ResearchSchema.from_dict(data.research_schema.model_dump(exclude_none=True))
-            
-        collection = db.update_collection(
+        return db.update_collection(
             collection_id=collection_id,
             name=data.name,
             extraction_prompt=data.extraction_prompt,
-            research_schema=schema_model
+            research_schema=data.research_schema
         )
-        # TODO: Trigger background job to re-extract data for all products in this collection
-        return collection.to_dict()
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
@@ -96,8 +86,7 @@ def list_products(
     collection_id: int, 
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
-    products = db.get_products_by_collection(collection_id)
-    return products.to_dict_list()
+    return db.get_products_by_collection(collection_id)
 
 @router.post("/collections/{collection_id}/products", response_model=ProductExtractResult)
 def extract_product(
@@ -167,7 +156,7 @@ def get_product(
         product = db.get_product(product_id)
         if product.collection_id != collection_id:
             raise fastapi.HTTPException(status_code=404, detail="Product not found in this collection")
-        return product.to_dict()
+        return product
     except criterium.ProductNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
