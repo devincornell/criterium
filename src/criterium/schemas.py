@@ -55,6 +55,14 @@ class CollectionUpdate(BaseModel):
     extraction_prompt: str | None = None
     research_schema: ResearchSchemaDef | None = None
 
+class CollectionSuggestionRequest(BaseModel):
+    description: str = Field(min_length=10, max_length=4000)
+
+class CollectionSuggestionResponse(BaseModel):
+    name: str
+    extraction_prompt: str
+    research_schema: ResearchSchemaObject
+
 import datetime
 
 class CollectionResponse(BaseModel):

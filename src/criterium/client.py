@@ -21,6 +21,17 @@ class CriteriumClient:
         response.raise_for_status()
         return schemas.CollectionResponse.model_validate(response.json())
 
+    def suggest_collection(
+        self,
+        request: schemas.CollectionSuggestionRequest,
+    ) -> schemas.CollectionSuggestionResponse:
+        response = self.session.post(
+            f"{self.base_url}/collections/suggest-schema",
+            json=request.model_dump(),
+        )
+        response.raise_for_status()
+        return schemas.CollectionSuggestionResponse.model_validate(response.json())
+
     def get_collection(self, collection_id: int) -> schemas.CollectionResponse:
         response = self.session.get(f"{self.base_url}/collections/{collection_id}")
         response.raise_for_status()

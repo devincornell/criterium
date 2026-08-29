@@ -1,5 +1,10 @@
 from criterium.client import CriteriumClient
-from criterium.schemas import CollectionCreate, ProductCreate, ResearchSchemaObject
+from criterium.schemas import (
+    CollectionCreate,
+    CollectionSuggestionRequest,
+    ProductCreate,
+    ResearchSchemaObject,
+)
 
 
 class FakeResponse:
@@ -84,5 +89,36 @@ def test_extract_product_posts_to_nested_resource() -> None:
             "POST",
             "http://example.test/collections/3/products",
             {"product_info": "Example"},
+        )
+    ]
+
+
+def test_suggest_collection_posts_description() -> None:
+    response = FakeResponse(
+        {
+            "name": "Electric Vehicles",
+            "extraction_prompt": "Extract comparable specifications.",
+            "research_schema": {
+                "type": "object",
+                "properties": {"range_miles": {"type": "integer"}},
+            },
+        }
+    )
+    session = FakeSession(response)
+    client = CriteriumClient("http://example.test")
+    client.session = session
+
+    result = client.suggest_collection(
+        CollectionSuggestionRequest(
+            description="Compare compact electric vehicles for city driving"
+        )
+    )
+
+    assert result.name == "Electric Vehicles"
+    assert session.calls == [
+        (
+            "POST",
+            "http://example.test/collections/suggest-schema",
+            {"description": "Compare compact electric vehicles for city driving"},
         )
     ]

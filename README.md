@@ -18,3 +18,7 @@ make run
 ```
 
 Tests replace external Gemini and Firecrawl calls with deterministic fakes. Live API calls are not part of the default test suite.
+
+## Collection Suggestions
+
+`POST /collections/suggest-schema` accepts a plain-language collection description and returns a proposed name, extraction prompt, and validated research schema. The new-collection form exposes the same workflow through **Generate Starter**.

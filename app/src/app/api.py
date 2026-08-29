@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import criterium
 from criterium.schemas import (
     CollectionCreate, CollectionUpdate, CollectionResponse,
+    CollectionSuggestionRequest, CollectionSuggestionResponse,
     ProductCreate, ProductExtractResult, ProductResponse, ResearchReferenceResponse
 )
 
@@ -26,6 +27,9 @@ def get_db(request: fastapi.Request) -> criterium.ResearchDB:
 def get_researcher(request: fastapi.Request) -> criterium.Researcher:
     return criterium.GeminiSearchResearcher(ai_client=request.app.state.ai_client)
 
+def get_collection_suggester(request: fastapi.Request) -> criterium.CollectionSuggester:
+    return criterium.GeminiCollectionSuggester(ai_client=request.app.state.ai_client)
+
 
 # --- Collections Endpoints ---
 
@@ -43,6 +47,16 @@ def create_collection(
         extraction_prompt=data.extraction_prompt,
         research_schema=data.research_schema
     )
+
+@router.post("/collections/suggest-schema", response_model=CollectionSuggestionResponse)
+def suggest_collection_schema(
+    data: CollectionSuggestionRequest,
+    suggester: criterium.CollectionSuggester = fastapi.Depends(get_collection_suggester),
+):
+    try:
+        return suggester.suggest(data.description)
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=502, detail=f"Schema suggestion failed: {e}")
 
 @router.get("/collections/{collection_id}", response_model=CollectionResponse)
 def get_collection(

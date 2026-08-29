@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 import criterium
 from app import create_app
-from app.api import get_researcher
+from app.api import get_collection_suggester, get_researcher
 from app.config import Settings
 
 
@@ -39,6 +39,30 @@ class FakeResearcher:
             ),
         )
 
+@dataclasses.dataclass
+class FakeCollectionSuggester:
+    should_fail: bool = False
+
+    def suggest(self, description: str) -> criterium.schemas.CollectionSuggestionResponse:
+        if self.should_fail:
+            raise RuntimeError("provider unavailable")
+        return criterium.schemas.CollectionSuggestionResponse.model_validate(
+            {
+                "name": "Suggested Collection",
+                "extraction_prompt": f"Research {description}",
+                "research_schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Canonical item title.",
+                        }
+                    },
+                    "required": ["title"],
+                },
+            }
+        )
+
 
 @pytest.fixture
 def app():
@@ -53,6 +77,7 @@ def app():
 @pytest.fixture
 def client(app):
     app.dependency_overrides[get_researcher] = lambda: FakeResearcher()
+    app.dependency_overrides[get_collection_suggester] = lambda: FakeCollectionSuggester()
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -74,6 +99,41 @@ def create_collection(client: TestClient) -> int:
     response = client.post("/collections", json=collection_payload())
     assert response.status_code == 200
     return response.json()["id"]
+
+
+def test_suggest_collection_schema(client: TestClient) -> None:
+    response = client.post(
+        "/collections/suggest-schema",
+        json={"description": "Compare science fiction novels by major attributes"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "Suggested Collection"
+    assert payload["research_schema"]["required"] == ["title"]
+
+
+def test_suggest_collection_schema_validates_description(client: TestClient) -> None:
+    response = client.post(
+        "/collections/suggest-schema",
+        json={"description": "short"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_suggest_collection_schema_handles_provider_failure(app) -> None:
+    app.dependency_overrides[get_collection_suggester] = lambda: FakeCollectionSuggester(
+        should_fail=True
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/collections/suggest-schema",
+            json={"description": "Compare science fiction novels by major attributes"},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Schema suggestion failed: provider unavailable"
 
 
 def test_collection_crud_and_missing_resource(client: TestClient) -> None:
