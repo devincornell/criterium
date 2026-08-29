@@ -110,7 +110,7 @@
                         <div class="flex space-x-2">
                             <input v-model="newProductQuery" type="text" placeholder="e.g. ThinkPad X1 Carbon Gen 11" class="border border-gray-300 rounded-lg p-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                             <button type="button" @click.prevent="extractProduct" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 shadow-sm transition-colors">
-                                Scrape & Extract
+                                Research & Extract
                             </button>
                         </div>
                     </div>
@@ -133,6 +133,17 @@
                             <!-- Display Extracted Data as beautiful JSON -->
                             <div class="mt-3 bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto shadow-inner">
                                 <pre class="text-xs text-gray-800 font-mono">{{ JSON.stringify(product.extracted_data, null, 2) }}</pre>
+                            </div>
+                            <div v-if="product.references?.length" class="mt-3">
+                                <h5 class="text-xs font-semibold uppercase text-gray-500 mb-2">References</h5>
+                                <ul class="space-y-1">
+                                    <li v-for="reference in product.references" :key="reference.id">
+                                        <a :href="reference.url" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-600 hover:underline">
+                                            {{ reference.title || reference.url }}
+                                        </a>
+                                        <span class="ml-2 text-xs text-gray-400">{{ reference.provider }}</span>
+                                    </li>
+                                </ul>
                             </div>
                         </div>
                     </div>

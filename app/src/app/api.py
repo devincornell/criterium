@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import criterium
 from criterium.schemas import (
     CollectionCreate, CollectionUpdate, CollectionResponse,
-    ProductCreate, ProductExtractResult, ProductResponse
+    ProductCreate, ProductExtractResult, ProductResponse, ResearchReferenceResponse
 )
 
 router = fastapi.APIRouter()
@@ -120,6 +120,7 @@ def extract_product(
             source_url=research_result.source_url,
             raw_source_text=research_result.raw_source_text,
             extracted_data=research_result.extracted_data,
+            references=research_result.references,
         )
     except criterium.SourceUrlAlreadyExistsError as e:
         raise fastapi.HTTPException(status_code=409, detail=str(e))
@@ -127,7 +128,11 @@ def extract_product(
     return ProductExtractResult(
         source_url=product.source_url, 
         status="success", 
-        product_id=product.id
+        product_id=product.id,
+        references=[
+            ResearchReferenceResponse.model_validate(reference)
+            for reference in product.references
+        ],
     )
 
 @router.get("/collections/{collection_id}/products/{product_id}", response_model=ProductResponse)

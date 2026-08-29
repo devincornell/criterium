@@ -6,6 +6,26 @@ from pydantic import TypeAdapter
 from . import schemas
 
 @dataclasses.dataclass(frozen=True)
+class ResearchReference:
+    url: str
+    title: str | None = None
+    provider: str = "unknown"
+    id: int | None = None
+    product_id: int | None = None
+    created_at: datetime.datetime | None = None
+
+    @classmethod
+    def from_row(cls, row: sqlalchemy.Row) -> typing.Self:
+        return cls(
+            id=row._mapping["id"],
+            product_id=row._mapping["product_id"],
+            url=row._mapping["url"],
+            title=row._mapping["title"],
+            provider=row._mapping["provider"],
+            created_at=row._mapping["created_at"],
+        )
+
+@dataclasses.dataclass(frozen=True)
 class ResearchCollection:
     id: int
     name: str
@@ -37,6 +57,7 @@ class Product:
     raw_source_text: str
     extracted_data: dict[str, typing.Any] | None
     created_at: datetime.datetime
+    references: tuple[ResearchReference, ...] = ()
 
     @classmethod
     def from_row(cls, row: sqlalchemy.Row) -> typing.Self:

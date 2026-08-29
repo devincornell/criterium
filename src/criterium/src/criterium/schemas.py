@@ -1,5 +1,5 @@
 import typing
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Annotated, Literal
 
 # --- Schemas (Pydantic for I/O validation) ---
@@ -67,13 +67,26 @@ class CollectionResponse(BaseModel):
 class ProductCreate(BaseModel):
     product_info: str
 
+class ResearchReferenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    url: str
+    title: str | None
+    provider: str
+    created_at: datetime.datetime
+
 class ProductExtractResult(BaseModel):
     source_url: str
     status: str
     product_id: int | None = None
     error: str | None = None
+    references: list[ResearchReferenceResponse] = Field(default_factory=list)
 
 class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     collection_id: int
     name: str
@@ -81,3 +94,4 @@ class ProductResponse(BaseModel):
     raw_source_text: str
     extracted_data: dict[str, typing.Any] | None
     created_at: datetime.datetime
+    references: list[ResearchReferenceResponse] = Field(default_factory=list)

@@ -15,6 +15,7 @@ class DiscoveryResult:
 @dataclasses.dataclass(frozen=True)
 class ResearchResult(DiscoveryResult):
     extracted_data: dict[str, typing.Any]
+    references: tuple[models.ResearchReference, ...] = ()
 
 class Researcher(typing.Protocol):
     def discover(self, product_info: str) -> DiscoveryResult:
@@ -34,7 +35,7 @@ class Researcher(typing.Protocol):
 class FirecrawlGeminiResearcher:
     ai_client: genai.Client
     fc_app: Firecrawl
-    model_name: str = "gemini-2.5-flash"
+    model_name: str = "gemini-3.7-flash"
 
     def discover(self, product_info: str) -> DiscoveryResult:
         search_results = self.fc_app.search(
@@ -93,16 +94,22 @@ class FirecrawlGeminiResearcher:
         return ResearchResult(
             source_url=discovery.source_url,
             raw_source_text=discovery.raw_source_text,
-            extracted_data=extracted
+            extracted_data=extracted,
+            references=(
+                models.ResearchReference(
+                    url=discovery.source_url,
+                    provider="firecrawl",
+                ),
+            ),
         )
 
 
 @dataclasses.dataclass(frozen=True)
 class GeminiSearchResearcher:
     ai_client: genai.Client
-    model_name: str = "gemini-2.5-flash"
+    model_name: str = "gemini-3.7-flash"
 
-    def _search(self, prompt: str) -> DiscoveryResult:
+    def _search(self, prompt: str) -> tuple[DiscoveryResult, tuple[models.ResearchReference, ...]]:
         response = self.ai_client.models.generate_content(
             model=self.model_name,
             contents=prompt,
@@ -117,27 +124,32 @@ class GeminiSearchResearcher:
         candidates = response.candidates or []
         grounding_metadata = candidates[0].grounding_metadata if candidates else None
         grounding_chunks = grounding_metadata.grounding_chunks if grounding_metadata else []
-        source_url = next(
-            (
-                chunk.web.uri
-                for chunk in grounding_chunks or []
-                if chunk.web and chunk.web.uri
-            ),
-            None,
+        references = tuple(
+            models.ResearchReference(
+                url=chunk.web.uri,
+                title=chunk.web.title,
+                provider="google_search",
+            )
+            for chunk in grounding_chunks or []
+            if chunk.web and chunk.web.uri
         )
-        if not source_url:
+        if not references:
             raise ValueError("Gemini returned no grounded web source.")
 
-        return DiscoveryResult(
-            source_url=source_url,
-            raw_source_text=response.text,
+        return (
+            DiscoveryResult(
+                source_url=references[0].url,
+                raw_source_text=response.text,
+            ),
+            references,
         )
 
     def discover(self, product_info: str) -> DiscoveryResult:
-        return self._search(
+        discovery, _ = self._search(
             f"Use Google Search to research {product_info}. "
             "Return a factual evidence summary with the details supported by web sources."
         )
+        return discovery
 
     def extract(self, text: str, collection: models.ResearchCollection) -> dict[str, typing.Any]:
         response = self.ai_client.models.generate_content(
@@ -158,15 +170,16 @@ class GeminiSearchResearcher:
             collection.research_schema.model_dump(exclude_none=True),
             indent=2,
         )
-        discovery = self._search(
+        discovery, references = self._search(
             f"Use Google Search to research this subject: {product_info}\n\n"
             f"Research objective:\n{collection.extraction_prompt}\n\n"
             f"Find reliable evidence for every field in this requested schema:\n{schema}\n\n"
-            "Return a comprehensive factual summary for a subsequent structured extraction."
+            "Return a comprehensive factual summary grounded in the web sources you used."
         )
         extracted = self.extract(discovery.raw_source_text, collection)
         return ResearchResult(
             source_url=discovery.source_url,
             raw_source_text=discovery.raw_source_text,
             extracted_data=extracted,
+            references=references,
         )
