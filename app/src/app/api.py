@@ -104,41 +104,25 @@ def extract_product(
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
     
-    # Initialize our concrete Researcher implementation
-    researcher = criterium.FirecrawlGeminiResearcher(
+    researcher = criterium.GeminiSearchResearcher(
         ai_client=request.app.state.ai_client,
-        fc_app=request.app.state.fc_app
     )
-    
-    # STEP 1: Discovery (Web Search & Scrape)
-    try:
-        discovery_result = researcher.discover(data.product_info)
-    except Exception as e:
-        raise fastapi.HTTPException(status_code=500, detail=f"Discovery failed: {e}")
 
-    # STEP 2: Deduplication & Audit Persistence
-    # We save the raw text to the database first. If the URL already exists, 
-    # it raises SourceUrlAlreadyExistsError, halting the pipeline BEFORE we waste tokens.
+    try:
+        research_result = researcher.research(data.product_info, collection)
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=f"Research failed: {e}")
+
     try:
         product = db.add_product(
             collection_id=collection_id,
             name=f"Research: {data.product_info}",
-            source_url=discovery_result.source_url,
-            raw_source_text=discovery_result.raw_source_text,
-            extracted_data=None  # We haven't extracted data yet
+            source_url=research_result.source_url,
+            raw_source_text=research_result.raw_source_text,
+            extracted_data=research_result.extracted_data,
         )
     except criterium.SourceUrlAlreadyExistsError as e:
         raise fastapi.HTTPException(status_code=409, detail=str(e))
-
-    # STEP 3: Constrained JSON Extraction
-    try:
-        extracted_data = researcher.extract(discovery_result.raw_source_text, collection)
-    except Exception as e:
-        raise fastapi.HTTPException(status_code=500, detail=f"LLM Extraction failed: {e}")
-
-    # STEP 4: Structured Persistence
-    # Update the newly created product row with the final LLM output
-    product = db.update_product_data(product.id, extracted_data)
 
     return ProductExtractResult(
         source_url=product.source_url, 

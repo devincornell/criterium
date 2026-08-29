@@ -1,5 +1,6 @@
 import typing
 import dataclasses
+import json
 from google import genai
 from google.genai import types
 from firecrawl import Firecrawl
@@ -74,7 +75,6 @@ class FirecrawlGeminiResearcher:
         return DiscoveryResult(source_url=str(source_url), raw_source_text=str(raw_source_text))
 
     def extract(self, text: str, collection: models.ResearchCollection) -> dict[str, typing.Any]:
-        import json
         response = self.ai_client.models.generate_content(
             model=self.model_name,
             contents=f"Analyze the source text below and extract specifications.\n\nContext:\n{text}",
@@ -94,4 +94,79 @@ class FirecrawlGeminiResearcher:
             source_url=discovery.source_url,
             raw_source_text=discovery.raw_source_text,
             extracted_data=extracted
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class GeminiSearchResearcher:
+    ai_client: genai.Client
+    model_name: str = "gemini-2.5-flash"
+
+    def _search(self, prompt: str) -> DiscoveryResult:
+        response = self.ai_client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            ),
+        )
+
+        if not response.text:
+            raise ValueError("Gemini returned no grounded research text.")
+
+        candidates = response.candidates or []
+        grounding_metadata = candidates[0].grounding_metadata if candidates else None
+        grounding_chunks = grounding_metadata.grounding_chunks if grounding_metadata else []
+        source_url = next(
+            (
+                chunk.web.uri
+                for chunk in grounding_chunks or []
+                if chunk.web and chunk.web.uri
+            ),
+            None,
+        )
+        if not source_url:
+            raise ValueError("Gemini returned no grounded web source.")
+
+        return DiscoveryResult(
+            source_url=source_url,
+            raw_source_text=response.text,
+        )
+
+    def discover(self, product_info: str) -> DiscoveryResult:
+        return self._search(
+            f"Use Google Search to research {product_info}. "
+            "Return a factual evidence summary with the details supported by web sources."
+        )
+
+    def extract(self, text: str, collection: models.ResearchCollection) -> dict[str, typing.Any]:
+        response = self.ai_client.models.generate_content(
+            model=self.model_name,
+            contents=f"Extract the requested data from this grounded research.\n\nResearch:\n{text}",
+            config=types.GenerateContentConfig(
+                system_instruction=collection.extraction_prompt,
+                response_mime_type="application/json",
+                response_schema=collection.research_schema.model_dump(exclude_none=True),
+            ),
+        )
+        if not response.text:
+            raise ValueError("Gemini returned no structured extraction.")
+        return json.loads(response.text)
+
+    def research(self, product_info: str, collection: models.ResearchCollection) -> ResearchResult:
+        schema = json.dumps(
+            collection.research_schema.model_dump(exclude_none=True),
+            indent=2,
+        )
+        discovery = self._search(
+            f"Use Google Search to research this subject: {product_info}\n\n"
+            f"Research objective:\n{collection.extraction_prompt}\n\n"
+            f"Find reliable evidence for every field in this requested schema:\n{schema}\n\n"
+            "Return a comprehensive factual summary for a subsequent structured extraction."
+        )
+        extracted = self.extract(discovery.raw_source_text, collection)
+        return ResearchResult(
+            source_url=discovery.source_url,
+            raw_source_text=discovery.raw_source_text,
+            extracted_data=extracted,
         )
