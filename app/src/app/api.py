@@ -44,7 +44,7 @@ def create_collection(
 ):
     return db.add_collection(
         name=data.name,
-        extraction_prompt=data.extraction_prompt,
+        research_instructions=data.research_instructions,
         research_schema=data.research_schema
     )
 
@@ -75,11 +75,16 @@ def update_collection(
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
     try:
+        update_values = {}
+        if data.name is not None:
+            update_values["name"] = data.name
+        if "research_instructions" in data.model_fields_set:
+            update_values["research_instructions"] = data.research_instructions
+        if data.research_schema is not None:
+            update_values["research_schema"] = data.research_schema
         return db.update_collection(
             collection_id=collection_id,
-            name=data.name,
-            extraction_prompt=data.extraction_prompt,
-            research_schema=data.research_schema
+            **update_values,
         )
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))

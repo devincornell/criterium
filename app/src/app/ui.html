@@ -61,8 +61,8 @@
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Extraction Prompt</label>
-                    <textarea v-model="form.extraction_prompt" rows="3" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="Instructions for the LLM to extract data from the page context..."></textarea>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Research Instructions (Optional)</label>
+                    <textarea v-model="form.research_instructions" rows="3" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="e.g., Prefer manufacturer sources and compare US-market models only"></textarea>
                 </div>
 
                 <div class="mb-6">
@@ -104,8 +104,8 @@
                 <!-- Details Grid -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <h3 class="text-lg font-semibold mb-3 text-gray-900">Extraction Prompt</h3>
-                        <p class="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">{{ selectedCollection.extraction_prompt }}</p>
+                        <h3 class="text-lg font-semibold mb-3 text-gray-900">Research Instructions</h3>
+                        <p class="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">{{ selectedCollection.research_instructions || 'No collection-specific instructions.' }}</p>
                     </div>
                     <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <h3 class="text-lg font-semibold mb-3 text-gray-900">Schema</h3>
@@ -249,20 +249,17 @@
 <script>
     const { createApp, ref, onMounted, nextTick } = Vue;
 
-    // Helper functions for translating between JSON Schema and our Internal representation
+    // Helper functions for translating between criteria schemas and the visual representation
     function toJSONSchema(node) {
         let schema = { type: node.type };
         if (node.description) schema.description = node.description;
         
         if (node.type === 'object') {
             schema.properties = {};
-            schema.required = [];
             for (let prop of node.properties) {
                 if (!prop.name) continue; // Skip empty names
                 schema.properties[prop.name] = toJSONSchema(prop);
-                schema.required.push(prop.name);
             }
-            if (schema.required.length === 0) delete schema.required;
         } else if (node.type === 'array') {
             schema.items = node.items ? toJSONSchema(node.items) : { type: 'string' };
         }
@@ -367,7 +364,7 @@
                 researchJobs: [],
                 isEditing: false,
                 isCreating: false,
-                form: { name: '', extraction_prompt: '', research_schema: {} },
+                form: { name: '', research_instructions: '', research_schema: {} },
                 
                 // Visual Editor State
                 editorMode: 'visual', // 'visual' | 'code'
@@ -552,13 +549,12 @@
                 this.suggestionDescription = '';
                 
                 if (col) {
-                    this.form = { name: col.name, extraction_prompt: col.extraction_prompt, research_schema: col.research_schema };
+                    this.form = { name: col.name, research_instructions: col.research_instructions || '', research_schema: col.research_schema };
                 } else {
-                    // Default JSON Schema template for new collections
                     this.form = { 
                         name: '', 
-                        extraction_prompt: '', 
-                        research_schema: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } 
+                        research_instructions: '',
+                        research_schema: { type: "object", properties: { title: { type: "string" } } }
                     };
                 }
                 

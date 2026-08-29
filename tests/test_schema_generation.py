@@ -10,7 +10,7 @@ from criterium.schema_generation import (
 )
 SUGGESTION = {
     "name": "Compact Electric Vehicles",
-    "extraction_prompt": "Extract comparable vehicle specifications.",
+    "research_instructions": "Use US-market manufacturer specifications.",
     "fields": [
         {
             "name": "model",
@@ -50,8 +50,20 @@ def test_gemini_suggester_validates_sdk_and_json_responses(response) -> None:
     result = suggester.suggest("Compare compact electric vehicles for city driving")
 
     assert result.name == "Compact Electric Vehicles"
-    assert result.research_schema.required == ["model", "range_miles"]
-    assert result.research_schema.properties["range_miles"].nullable is True
+    assert result.research_instructions == "Use US-market manufacturer specifications."
+    assert result.research_schema.model_dump(exclude_none=True) == {
+        "type": "object",
+        "properties": {
+            "model": {
+                "description": "Vehicle model name.",
+                "type": "string",
+            },
+            "range_miles": {
+                "description": "EPA range in miles.",
+                "type": "integer",
+            },
+        },
+    }
     assert models.request["model"] == "gemini-3.7-flash"
     response_schema = models.request["config"].response_schema.model_json_schema()
     assert "additionalProperties" not in json.dumps(response_schema)
@@ -109,7 +121,7 @@ def test_nested_suggested_fields_convert_to_research_schema() -> None:
 
     schema = _to_research_schema(field).model_dump(exclude_none=True)
 
-    assert schema["items"]["required"] == ["name"]
+    assert "required" not in schema["items"]
     assert schema["items"]["properties"]["name"]["type"] == "string"
 
 

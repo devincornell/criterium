@@ -47,7 +47,7 @@ def test_create_collection_posts_serialized_schema() -> None:
         {
             "id": 1,
             "name": "Books",
-            "extraction_prompt": "Extract",
+            "research_instructions": None,
             "research_schema": {"type": "object", "properties": {}},
             "created_at": "2026-01-01T00:00:00Z",
         }
@@ -59,7 +59,6 @@ def test_create_collection_posts_serialized_schema() -> None:
     result = client.create_collection(
         CollectionCreate(
             name="Books",
-            extraction_prompt="Extract",
             research_schema=ResearchSchemaObject(),
         )
     )
@@ -140,7 +139,7 @@ def test_suggest_collection_posts_description() -> None:
     response = FakeResponse(
         {
             "name": "Electric Vehicles",
-            "extraction_prompt": "Extract comparable specifications.",
+            "research_instructions": None,
             "research_schema": {
                 "type": "object",
                 "properties": {"range_miles": {"type": "integer"}},

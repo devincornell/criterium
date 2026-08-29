@@ -5,12 +5,23 @@ from google import genai
 from google.genai import types
 from firecrawl import Firecrawl
 from firecrawl.types import Document, ScrapeOptions
-from . import models
+from . import models, schemas
 
 REQUIRED_OUTPUT_INSTRUCTION = (
     "Return every field defined by the response schema. If reliable evidence for a field "
     "is unavailable, return null for that field instead of omitting it or guessing."
 )
+GENERIC_EXTRACTION_INSTRUCTION = (
+    "Extract factual values for the fields in the response schema from the supplied evidence. "
+    "Follow each field description and preserve the meaning and units it specifies."
+)
+
+
+def _extraction_instruction(collection: models.ResearchCollection) -> str:
+    instructions = [GENERIC_EXTRACTION_INSTRUCTION, REQUIRED_OUTPUT_INSTRUCTION]
+    if collection.research_instructions:
+        instructions.append(f"Collection-specific instructions:\n{collection.research_instructions}")
+    return "\n\n".join(instructions)
 
 @dataclasses.dataclass(frozen=True)
 class DiscoveryResult:
@@ -85,9 +96,9 @@ class FirecrawlGeminiResearcher:
             model=self.model_name,
             contents=f"Analyze the source text below and extract specifications.\n\nContext:\n{text}",
             config=types.GenerateContentConfig(
-                system_instruction=f"{collection.extraction_prompt}\n\n{REQUIRED_OUTPUT_INSTRUCTION}",
+                system_instruction=_extraction_instruction(collection),
                 response_mime_type="application/json",
-                response_schema=collection.research_schema.model_dump(exclude_none=True)
+                response_schema=schemas.to_structured_output_schema(collection.research_schema),
             ),
         )
         # The SDK returns the structured output as a JSON string in response.text
@@ -161,9 +172,9 @@ class GeminiSearchResearcher:
             model=self.model_name,
             contents=f"Extract the requested data from this grounded research.\n\nResearch:\n{text}",
             config=types.GenerateContentConfig(
-                system_instruction=f"{collection.extraction_prompt}\n\n{REQUIRED_OUTPUT_INSTRUCTION}",
+                system_instruction=_extraction_instruction(collection),
                 response_mime_type="application/json",
-                response_schema=collection.research_schema.model_dump(exclude_none=True),
+                response_schema=schemas.to_structured_output_schema(collection.research_schema),
             ),
         )
         if not response.text:
@@ -175,10 +186,15 @@ class GeminiSearchResearcher:
             collection.research_schema.model_dump(exclude_none=True),
             indent=2,
         )
+        collection_instructions = ""
+        if collection.research_instructions:
+            collection_instructions = (
+                f"\n\nCollection-specific instructions:\n{collection.research_instructions}"
+            )
         discovery, references = self._search(
             f"Use Google Search to research this subject: {product_info}\n\n"
-            f"Research objective:\n{collection.extraction_prompt}\n\n"
-            f"Find reliable evidence for every field in this requested schema:\n{schema}\n\n"
+            f"Find reliable evidence for every field in these research criteria:\n{schema}"
+            f"{collection_instructions}\n\n"
             "Explicitly note fields for which reliable evidence is unavailable, and do not guess. "
             "Return a comprehensive factual summary grounded in the web sources you used."
         )

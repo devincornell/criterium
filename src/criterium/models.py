@@ -29,7 +29,7 @@ class ResearchReference:
 class ResearchCollection:
     id: int
     name: str
-    extraction_prompt: str
+    research_instructions: str | None
     research_schema: schemas.ResearchSchemaDef
     created_at: datetime.datetime
 
@@ -38,7 +38,7 @@ class ResearchCollection:
         return cls(
             id=row._mapping["id"],
             name=row._mapping["name"],
-            extraction_prompt=row._mapping["extraction_prompt"],
+            research_instructions=row._mapping["research_instructions"] or None,
             research_schema=TypeAdapter(schemas.ResearchSchemaDef).validate_python(row._mapping["research_schema"]),
             created_at=row._mapping["created_at"]
         )

@@ -21,11 +21,13 @@ Tests replace external Gemini and Firecrawl calls with deterministic fakes. Live
 
 The application uses the file-backed SQLite database `criterium.db` by default, so collections, jobs, and research results survive server restarts. Override its location with `DB_URL`; in-memory databases are intentionally unsupported.
 
-Every property in a collection's research schema is required. When reliable evidence is unavailable, researchers must return an explicit `null` value rather than omit the property or invent a value.
+A collection stores only its user-facing research criteria: field types, descriptions, object properties, and array items. Criterium adds structured-output requirements at LLM call time, so every configured property is returned and unavailable values become explicit `null` values.
+
+Research uses a shared built-in prompt. Collections may optionally add `research_instructions` for cross-cutting scope, source, methodology, or interpretation rules that do not fit naturally in field descriptions.
 
 ## Collection Suggestions
 
-`POST /collections/suggest-schema` accepts a plain-language collection description and returns a proposed name, extraction prompt, and validated research schema. The new-collection form exposes the same workflow through **Generate Starter**.
+`POST /collections/suggest-schema` accepts a plain-language collection description and returns a proposed name, validated research schema, and optional research instructions when special guidance is needed. The new-collection form exposes the same workflow through **Generate Starter**.
 
 ## Batch Research
 

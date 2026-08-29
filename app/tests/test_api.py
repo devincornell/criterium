@@ -55,7 +55,7 @@ class FakeCollectionSuggester:
         return criterium.schemas.CollectionSuggestionResponse.model_validate(
             {
                 "name": "Suggested Collection",
-                "extraction_prompt": f"Research {description}",
+                "research_instructions": f"Prefer primary sources for {description}",
                 "research_schema": {
                     "type": "object",
                     "properties": {
@@ -64,7 +64,6 @@ class FakeCollectionSuggester:
                             "description": "Canonical item title.",
                         }
                     },
-                    "required": ["title"],
                 },
             }
         )
@@ -94,11 +93,9 @@ def client(app):
 def collection_payload() -> dict:
     return {
         "name": "Books",
-        "extraction_prompt": "Extract the title.",
         "research_schema": {
             "type": "object",
             "properties": {"title": {"type": "string"}},
-            "required": ["title"],
         },
     }
 
@@ -118,7 +115,10 @@ def test_suggest_collection_schema(client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["name"] == "Suggested Collection"
-    assert payload["research_schema"]["required"] == ["title"]
+    assert payload["research_instructions"].startswith("Prefer primary sources")
+    serialized_schema = str(payload["research_schema"])
+    assert "required" not in serialized_schema
+    assert "nullable" not in serialized_schema
 
 
 def test_suggest_collection_schema_validates_description(client: TestClient) -> None:
@@ -147,11 +147,17 @@ def test_suggest_collection_schema_handles_provider_failure(app) -> None:
 def test_collection_crud_and_missing_resource(client: TestClient) -> None:
     collection_id = create_collection(client)
 
-    assert client.get(f"/collections/{collection_id}").status_code == 200
+    collection = client.get(f"/collections/{collection_id}")
+    assert collection.status_code == 200
+    assert collection.json()["research_instructions"] is None
     assert client.patch(
         f"/collections/{collection_id}",
-        json={"name": "Novels"},
-    ).json()["name"] == "Novels"
+        json={"name": "Novels", "research_instructions": "Use original editions."},
+    ).json()["research_instructions"] == "Use original editions."
+    assert client.patch(
+        f"/collections/{collection_id}",
+        json={"research_instructions": None},
+    ).json()["research_instructions"] is None
 
     assert client.delete(f"/collections/{collection_id}").status_code == 200
     assert client.get(f"/collections/{collection_id}").status_code == 404

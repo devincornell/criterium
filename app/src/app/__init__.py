@@ -62,11 +62,11 @@ async def lifespan(app: fastapi.FastAPI):
 API_DESCRIPTION = """
 # Dynamic Schema Research Agent
 
-This API enables structured, automated entity research. Instead of forcing findings into rigid, hardcoded database columns, you define **a priori evaluation criteria** using JSON Schema.
+This API enables structured, automated entity research. Instead of forcing findings into rigid, hardcoded database columns, you define **a priori evaluation criteria** using a compact schema.
 
 ## Creating your Research Schema
 
-When creating a new Collection, you must provide a `research_schema` using standard JSON Schema. The LLM uses this to structure its output.
+Provide field types, descriptions, object properties, and array items. Criterium uses a shared research prompt and adds provider-specific structured-output constraints only while making an LLM call. Every configured property is returned; unavailable values are represented as `null`. Use optional `research_instructions` only for collection-wide source, scope, methodology, or interpretation rules.
 
 ### Example: Book Researcher
 ```json
@@ -89,15 +89,12 @@ When creating a new Collection, you must provide a `research_schema` using stand
         "properties": {
           "title": { "type": "string" },
           "chronological_order": { "type": "integer" }
-        },
-        "required": ["title", "chronological_order"]
+        }
       }
-  },
-  "required": ["title", "year", "series_books"]
+    }
+  }
 }
 ```
-
-**Pro-Tip:** If you prefer Python, you can write a Pydantic `BaseModel` and call `MyModel.model_json_schema()` to automatically generate the JSON Schema equivalent to paste into your Collection!
 """
 
 def create_app(settings: Settings | None = None) -> fastapi.FastAPI:

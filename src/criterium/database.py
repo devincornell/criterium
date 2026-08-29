@@ -3,9 +3,18 @@ import datetime
 import typing
 import sqlalchemy
 import sqlalchemy.exc
+from pydantic import TypeAdapter
 from . import models
 from . import exceptions
 from . import schemas
+
+
+class _Unset:
+    pass
+
+
+_UNSET = _Unset()
+
 
 @dataclasses.dataclass(frozen=True)
 class ResearchDBTables:
@@ -22,7 +31,7 @@ class ResearchDBTables:
                 metadata,
                 sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
                 sqlalchemy.Column("name", sqlalchemy.String(255), nullable=False),
-                sqlalchemy.Column("extraction_prompt", sqlalchemy.Text, nullable=False),
+                sqlalchemy.Column("research_instructions", sqlalchemy.Text, nullable=False, default=""),
                 sqlalchemy.Column("research_schema", sqlalchemy.JSON, nullable=False),
                 sqlalchemy.Column("created_at", sqlalchemy.DateTime, nullable=False),
             )
@@ -100,18 +109,50 @@ class ResearchDB:
 
         if create_if_not_exists:
             metadata.create_all(bind=engine, tables=tabs.all(), checkfirst=True)
-        
-        return cls(engine=engine, metadata=metadata, tabs=tabs)
+
+        db = cls(engine=engine, metadata=metadata, tabs=tabs)
+        if sqlalchemy.inspect(engine).has_table(tabs.research_collections.name):
+            db._rename_extraction_prompt_column()
+            db._normalize_research_schemas()
+        return db
+
+    def _rename_extraction_prompt_column(self) -> None:
+        columns = {
+            column["name"]
+            for column in sqlalchemy.inspect(self.engine).get_columns(
+                self.tabs.research_collections.name
+            )
+        }
+        if "extraction_prompt" in columns and "research_instructions" not in columns:
+            with self.engine.begin() as conn:
+                conn.execute(sqlalchemy.text(
+                    "ALTER TABLE research_collections "
+                    "RENAME COLUMN extraction_prompt TO research_instructions"
+                ))
+
+    def _normalize_research_schemas(self) -> None:
+        adapter = TypeAdapter(schemas.ResearchSchemaDef)
+        with self.engine.begin() as conn:
+            rows = conn.execute(sqlalchemy.select(self.tabs.research_collections)).fetchall()
+            for row in rows:
+                stored_schema = row._mapping["research_schema"]
+                clean_schema = adapter.validate_python(stored_schema).model_dump(exclude_none=True)
+                if clean_schema != stored_schema:
+                    conn.execute(
+                        sqlalchemy.update(self.tabs.research_collections)
+                        .where(self.tabs.research_collections.c.id == row._mapping["id"])
+                        .values(research_schema=clean_schema)
+                    )
 
     def add_collection(
         self, 
         name: str, 
-        extraction_prompt: str, 
+        research_instructions: str | None,
         research_schema: schemas.ResearchSchemaDef
     ) -> models.ResearchCollection:
         stmt = sqlalchemy.insert(self.tabs.research_collections).values(
             name=name,
-            extraction_prompt=extraction_prompt,
+            research_instructions=research_instructions or "",
             research_schema=research_schema.model_dump(exclude_none=True),
             created_at=datetime.datetime.now(datetime.timezone.utc)
         ).returning(self.tabs.research_collections)
@@ -141,14 +182,14 @@ class ResearchDB:
         self,
         collection_id: int,
         name: str | None = None,
-        extraction_prompt: str | None = None,
+        research_instructions: str | None | _Unset = _UNSET,
         research_schema: schemas.ResearchSchemaDef | None = None
     ) -> models.ResearchCollection:
         update_values = {}
         if name is not None:
             update_values["name"] = name
-        if extraction_prompt is not None:
-            update_values["extraction_prompt"] = extraction_prompt
+        if not isinstance(research_instructions, _Unset):
+            update_values["research_instructions"] = research_instructions or ""
         if research_schema is not None:
             update_values["research_schema"] = research_schema.model_dump(exclude_none=True)
             

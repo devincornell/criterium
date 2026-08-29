@@ -32,7 +32,7 @@ class _SuggestedField(BaseModel):
 
 class _GeminiCollectionSuggestion(BaseModel):
     name: str
-    extraction_prompt: str
+    research_instructions: str | None = None
     fields: list[_SuggestedField]
 
 
@@ -101,12 +101,13 @@ class GeminiCollectionSuggester:
             contents=(
                 "Design a practical starting configuration for a research collection based on "
                 f"this description:\n\n{description}\n\n"
-                "Choose a concise collection name, write an extraction prompt that tells a "
-                "research model exactly what to find, and propose fields for a root object schema. "
+                "Choose a concise collection name and propose fields for a root object schema. "
                 "For object fields, put nested fields in properties. For array fields, provide an "
                 "items field definition. Include useful descriptions. Every proposed field will be "
                 "required, so keep the schema focused enough to compare items consistently and tell "
-                "the research model to use null when reliable evidence is unavailable."
+                "the research model to use null when reliable evidence is unavailable. Only provide "
+                "research_instructions when the description includes cross-cutting scope, source, "
+                "methodology, or interpretation rules that cannot be captured by field descriptions."
             ),
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -129,7 +130,7 @@ class GeminiCollectionSuggester:
         }
         return schemas.CollectionSuggestionResponse(
             name=suggestion.name,
-            extraction_prompt=suggestion.extraction_prompt,
+            research_instructions=suggestion.research_instructions,
             research_schema=schemas.ResearchSchemaObject(
                 properties=properties,
             ),

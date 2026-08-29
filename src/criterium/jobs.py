@@ -5,6 +5,7 @@ import jsonschema
 
 from .database import ResearchDB
 from .research import Researcher
+from .schemas import to_validation_schema
 
 
 @dataclasses.dataclass(frozen=True)
@@ -21,8 +22,7 @@ class ResearchJobWorker:
         try:
             collection = self.db.get_collection(job.collection_id)
             result = self.researcher.research(job.product_info, collection)
-            validation_schema = collection.research_schema.model_dump(exclude_none=True)
-            _convert_nullable(validation_schema)
+            validation_schema = to_validation_schema(collection.research_schema)
             jsonschema.validate(result.extracted_data, validation_schema)
             self.db.update_research_job_stage(job.id, "storing")
             self.db.complete_research_job(
@@ -40,12 +40,3 @@ class ResearchJobWorker:
         while not stop_event.is_set():
             if not self.run_once():
                 stop_event.wait(self.poll_interval)
-
-
-def _convert_nullable(schema: dict) -> None:
-    if schema.pop("nullable", False):
-        schema["type"] = [schema["type"], "null"]
-    for property_schema in schema.get("properties", {}).values():
-        _convert_nullable(property_schema)
-    if isinstance(schema.get("items"), dict):
-        _convert_nullable(schema["items"])

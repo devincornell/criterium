@@ -1,4 +1,5 @@
 import pytest
+import sqlalchemy
 
 from criterium.database import ResearchDB
 from criterium.exceptions import (
@@ -36,6 +37,14 @@ def test_collection_crud(db: ResearchDB) -> None:
 
     assert db.get_collection(collection.id).name == "Books"
     assert len(db.get_all_collections()) == 1
+    with db.engine.connect() as connection:
+        stored_schema = connection.execute(
+            sqlalchemy.select(db.tabs.research_collections.c.research_schema)
+        ).scalar_one()
+    assert stored_schema == {
+        "type": "object",
+        "properties": {"title": {"type": "string"}},
+    }
 
     updated = db.update_collection(collection.id, name="Novels")
     assert updated.name == "Novels"
@@ -43,6 +52,52 @@ def test_collection_crud(db: ResearchDB) -> None:
     db.delete_collection(collection.id)
     with pytest.raises(CollectionNotFoundError):
         db.get_collection(collection.id)
+
+
+def test_opening_database_removes_legacy_output_constraints(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'legacy.db'}"
+    database = ResearchDB.from_connection_string(database_url, create_if_not_exists=True)
+    collection = database.add_collection("Books", "Extract title", make_schema())
+    legacy_schema = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "nullable": True},
+        },
+        "required": ["title"],
+    }
+    with database.engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.update(database.tabs.research_collections)
+            .where(database.tabs.research_collections.c.id == collection.id)
+            .values(research_schema=legacy_schema)
+        )
+        connection.execute(sqlalchemy.text(
+            "ALTER TABLE research_collections "
+            "RENAME COLUMN research_instructions TO extraction_prompt"
+        ))
+    database.engine.dispose()
+
+    reopened = ResearchDB.from_connection_string(database_url)
+    try:
+        assert reopened.get_collection(collection.id).research_instructions == "Extract title"
+        column_names = {
+            column["name"]
+            for column in sqlalchemy.inspect(reopened.engine).get_columns(
+                reopened.tabs.research_collections.name
+            )
+        }
+        assert "research_instructions" in column_names
+        assert "extraction_prompt" not in column_names
+        with reopened.engine.connect() as connection:
+            stored_schema = connection.execute(
+                sqlalchemy.select(reopened.tabs.research_collections.c.research_schema)
+            ).scalar_one()
+        assert stored_schema == {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+        }
+    finally:
+        reopened.engine.dispose()
 
 
 def test_product_references_round_trip_and_cascade(db: ResearchDB) -> None:

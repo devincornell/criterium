@@ -6,7 +6,6 @@ from typing import Annotated, Literal
 
 class SchemaBase(BaseModel):
     description: str | None = None
-    nullable: bool | None = None
 
 class ResearchSchemaString(SchemaBase):
     type: Literal["string"] = "string"
@@ -27,14 +26,6 @@ class ResearchSchemaArray(SchemaBase):
 class ResearchSchemaObject(SchemaBase):
     type: Literal["object"] = "object"
     properties: dict[str, "ResearchSchemaDef"] = Field(default_factory=dict)
-    required: list[str] | None = None
-
-    @model_validator(mode='after')
-    def require_all_properties(self):
-        self.required = list(self.properties) or None
-        for property_schema in self.properties.values():
-            property_schema.nullable = True
-        return self
 
 # Discriminated union allows Pydantic to automatically resolve the correct subclass based on the "type" field
 ResearchSchemaDef = Annotated[
@@ -42,14 +33,56 @@ ResearchSchemaDef = Annotated[
     Field(discriminator="type")
 ]
 
+
+def to_structured_output_schema(research_schema: ResearchSchemaDef) -> dict[str, typing.Any]:
+    schema = research_schema.model_dump(exclude_none=True)
+    _add_output_constraints(schema, use_nullable_keyword=True)
+    return schema
+
+
+def to_validation_schema(research_schema: ResearchSchemaDef) -> dict[str, typing.Any]:
+    schema = research_schema.model_dump(exclude_none=True)
+    _add_output_constraints(schema, use_nullable_keyword=False)
+    return schema
+
+
+def _add_output_constraints(
+    schema: dict[str, typing.Any],
+    *,
+    use_nullable_keyword: bool,
+    nullable: bool = False,
+) -> None:
+    if nullable:
+        if use_nullable_keyword:
+            schema["nullable"] = True
+        else:
+            schema["type"] = [schema["type"], "null"]
+
+    properties = schema.get("properties", {})
+    if properties:
+        schema["required"] = list(properties)
+    for property_schema in properties.values():
+        _add_output_constraints(
+            property_schema,
+            use_nullable_keyword=use_nullable_keyword,
+            nullable=True,
+        )
+
+    item_schema = schema.get("items")
+    if isinstance(item_schema, dict):
+        _add_output_constraints(
+            item_schema,
+            use_nullable_keyword=use_nullable_keyword,
+        )
+
 class CollectionCreate(BaseModel):
     name: str
-    extraction_prompt: str
+    research_instructions: str | None = None
     research_schema: ResearchSchemaDef
 
 class CollectionUpdate(BaseModel):
     name: str | None = None
-    extraction_prompt: str | None = None
+    research_instructions: str | None = None
     research_schema: ResearchSchemaDef | None = None
 
 class CollectionSuggestionRequest(BaseModel):
@@ -57,7 +90,7 @@ class CollectionSuggestionRequest(BaseModel):
 
 class CollectionSuggestionResponse(BaseModel):
     name: str
-    extraction_prompt: str
+    research_instructions: str | None = None
     research_schema: ResearchSchemaObject
 
 import datetime
@@ -65,7 +98,7 @@ import datetime
 class CollectionResponse(BaseModel):
     id: int
     name: str
-    extraction_prompt: str
+    research_instructions: str | None
     research_schema: ResearchSchemaDef
     created_at: datetime.datetime
 

@@ -9,11 +9,11 @@ from criterium.research import FirecrawlGeminiResearcher, GeminiSearchResearcher
 from criterium.schemas import ResearchSchemaObject, ResearchSchemaString
 
 
-def make_collection() -> ResearchCollection:
+def make_collection(research_instructions: str | None = None) -> ResearchCollection:
     return ResearchCollection(
         id=1,
         name="Books",
-        extraction_prompt="Extract the title.",
+        research_instructions=research_instructions,
         research_schema=ResearchSchemaObject(
             properties={"title": ResearchSchemaString()}
         ),
@@ -51,14 +51,26 @@ def test_gemini_research_uses_search_then_structured_extraction() -> None:
         ai_client=SimpleNamespace(models=models),
     )
 
-    result = researcher.research("Example book", make_collection())
+    result = researcher.research(
+        "Example book",
+        make_collection("Prefer the publisher's canonical title."),
+    )
 
     assert result.extracted_data == {"title": "Example"}
     assert result.references[0].url == "https://example.com/source"
     assert models.calls[0]["config"].tools[0].google_search is not None
     assert models.calls[1]["config"].response_schema["required"] == ["title"]
     assert models.calls[1]["config"].response_schema["properties"]["title"]["nullable"] is True
+    assert "required" not in collection_schema_dump(make_collection())
+    assert "research criteria" in models.calls[0]["contents"].lower()
+    assert "prefer the publisher" in models.calls[0]["contents"].lower()
+    assert "extract factual values" in models.calls[1]["config"].system_instruction.lower()
+    assert "prefer the publisher" in models.calls[1]["config"].system_instruction.lower()
     assert "return null" in models.calls[1]["config"].system_instruction.lower()
+
+
+def collection_schema_dump(collection: ResearchCollection) -> str:
+    return str(collection.research_schema.model_dump(exclude_none=True))
 
 
 def test_gemini_research_requires_grounded_sources() -> None:
