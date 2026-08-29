@@ -33,9 +33,9 @@ API_DESCRIPTION = """
 
 This API enables structured, automated entity research. Instead of forcing findings into rigid, hardcoded database columns, you define **a priori evaluation criteria** using JSON Schema.
 
-## Creating your LLM Schema
+## Creating your Research Schema
 
-When creating a new Collection, you must provide an `llm_schema` using standard JSON Schema. The LLM uses this to structure its output.
+When creating a new Collection, you must provide a `research_schema` using standard JSON Schema. The LLM uses this to structure its output.
 
 ### Example: Book Researcher
 ```json

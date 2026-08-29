@@ -1,9 +1,12 @@
 import fastapi
 import typing
 import pathlib
-from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, RedirectResponse
 import criterium
+from criterium.schemas import (
+    CollectionCreate, CollectionUpdate, CollectionResponse,
+    ProductCreate, ProductExtractResult, ProductResponse
+)
 
 router = fastapi.APIRouter()
 
@@ -19,34 +22,6 @@ def serve_ui():
 # Dependency to get the DB instance (we will attach the db to the app state)
 def get_db(request: fastapi.Request) -> criterium.ResearchDB:
     return request.app.state.db
-
-# --- Schemas (Pydantic for I/O validation) ---
-
-class CollectionCreate(BaseModel):
-    name: str
-    extraction_prompt: str
-    llm_schema: criterium.models.LLMSchema
-
-class CollectionUpdate(BaseModel):
-    name: str | None = None
-    extraction_prompt: str | None = None
-    llm_schema: criterium.models.LLMSchema | None = None
-
-class CollectionResponse(BaseModel):
-    id: int
-    name: str
-    extraction_prompt: str
-    llm_schema: criterium.models.LLMSchema
-    created_at: str
-
-class ProductCreate(BaseModel):
-    product_info: str
-
-class ProductExtractResult(BaseModel):
-    source_url: str
-    status: str
-    product_id: int | None = None
-    error: str | None = None
 
 
 # --- Collections Endpoints ---
@@ -64,7 +39,7 @@ def create_collection(
     collection = db.add_collection(
         name=data.name,
         extraction_prompt=data.extraction_prompt,
-        llm_schema=data.llm_schema
+        research_schema=data.research_schema
     )
     return collection.to_dict()
 
@@ -90,7 +65,7 @@ def update_collection(
             collection_id=collection_id,
             name=data.name,
             extraction_prompt=data.extraction_prompt,
-            llm_schema=data.llm_schema
+            research_schema=data.research_schema
         )
         # TODO: Trigger background job to re-extract data for all products in this collection
         return collection.to_dict()
@@ -111,7 +86,7 @@ def delete_collection(
 
 # --- Products Endpoints ---
 
-@router.get("/collections/{collection_id}/products")
+@router.get("/collections/{collection_id}/products", response_model=list[ProductResponse])
 def list_products(
     collection_id: int, 
     db: criterium.ResearchDB = fastapi.Depends(get_db)
@@ -119,7 +94,7 @@ def list_products(
     products = db.get_products_by_collection(collection_id)
     return products.to_dict_list()
 
-@router.post("/collections/{collection_id}/products")
+@router.post("/collections/{collection_id}/products", response_model=ProductExtractResult)
 def extract_product(
     collection_id: int, 
     data: ProductCreate,
@@ -177,7 +152,7 @@ def extract_product(
         product_id=product.id
     )
 
-@router.get("/collections/{collection_id}/products/{product_id}")
+@router.get("/collections/{collection_id}/products/{product_id}", response_model=ProductResponse)
 def get_product(
     collection_id: int, 
     product_id: int,

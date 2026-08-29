@@ -22,7 +22,7 @@ class ResearchDBTables:
                 sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
                 sqlalchemy.Column("name", sqlalchemy.String(255), nullable=False),
                 sqlalchemy.Column("extraction_prompt", sqlalchemy.Text, nullable=False),
-                sqlalchemy.Column("llm_schema", sqlalchemy.JSON, nullable=False),
+                sqlalchemy.Column("research_schema", sqlalchemy.JSON, nullable=False),
                 sqlalchemy.Column("created_at", sqlalchemy.DateTime, nullable=False),
             ),
             products=sqlalchemy.Table(
@@ -80,12 +80,12 @@ class ResearchDB:
         self, 
         name: str, 
         extraction_prompt: str, 
-        llm_schema: models.LLMSchema
+        research_schema: models.ResearchSchema
     ) -> models.ResearchCollection:
         stmt = sqlalchemy.insert(self.tabs.research_collections).values(
             name=name,
             extraction_prompt=extraction_prompt,
-            llm_schema=llm_schema.to_dict(),
+            research_schema=research_schema.to_dict(),
             created_at=datetime.datetime.now(datetime.timezone.utc)
         ).returning(self.tabs.research_collections)
         
@@ -115,15 +115,15 @@ class ResearchDB:
         collection_id: int,
         name: str | None = None,
         extraction_prompt: str | None = None,
-        llm_schema: models.LLMSchema | None = None
+        research_schema: models.ResearchSchema | None = None
     ) -> models.ResearchCollection:
         update_values = {}
         if name is not None:
             update_values["name"] = name
         if extraction_prompt is not None:
             update_values["extraction_prompt"] = extraction_prompt
-        if llm_schema is not None:
-            update_values["llm_schema"] = llm_schema.to_dict()
+        if research_schema is not None:
+            update_values["research_schema"] = research_schema.to_dict()
             
         if not update_values:
             return self.get_collection(collection_id)

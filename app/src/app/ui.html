@@ -57,7 +57,7 @@
 
                 <div class="mb-6">
                     <div class="flex justify-between items-center mb-1">
-                        <label class="block text-sm font-medium text-gray-700">LLM Schema</label>
+                        <label class="block text-sm font-medium text-gray-700">Research Schema</label>
                         <div class="flex space-x-2">
                             <button type="button" @click.prevent="toggleEditorMode('visual')" :class="['px-3 py-1 text-xs font-medium rounded', editorMode === 'visual' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">Visual Builder</button>
                             <button type="button" @click.prevent="toggleEditorMode('code')" :class="['px-3 py-1 text-xs font-medium rounded', editorMode === 'code' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">JSON Code</button>
@@ -267,7 +267,7 @@
                 products: [],
                 isEditing: false,
                 isCreating: false,
-                form: { name: '', extraction_prompt: '', llm_schema: {} },
+                form: { name: '', extraction_prompt: '', research_schema: {} },
                 
                 // Visual Editor State
                 editorMode: 'visual', // 'visual' | 'code'
@@ -285,16 +285,16 @@
                 
                 if (mode === 'code') {
                     // Visual -> Code
-                    this.form.llm_schema = toJSONSchema(this.internalSchema);
+                    this.form.research_schema = toJSONSchema(this.internalSchema);
                     this.editorMode = 'code';
                     this.$nextTick(() => {
-                        if (this.editor) this.editor.set(this.form.llm_schema);
+                        if (this.editor) this.editor.set(this.form.research_schema);
                     });
                 } else {
                     // Code -> Visual
                     try {
-                        this.form.llm_schema = this.editor.get();
-                        this.internalSchema = fromJSONSchema(this.form.llm_schema, 'root', false);
+                        this.form.research_schema = this.editor.get();
+                        this.internalSchema = fromJSONSchema(this.form.research_schema, 'root', false);
                         this.editorMode = 'visual';
                     } catch(e) {
                         alert("Please fix JSON syntax errors before switching to Visual Builder.");
@@ -323,7 +323,7 @@
                     const container = document.getElementById('view-schema-editor');
                     if (container) {
                         this.viewEditor = new JSONEditor(container, { mode: 'view' });
-                        this.viewEditor.set(col.llm_schema);
+                        this.viewEditor.set(col.research_schema);
                     }
                 });
             },
@@ -333,18 +333,18 @@
                 this.selectedCollection = col;
                 
                 if (col) {
-                    this.form = { name: col.name, extraction_prompt: col.extraction_prompt, llm_schema: col.llm_schema };
+                    this.form = { name: col.name, extraction_prompt: col.extraction_prompt, research_schema: col.research_schema };
                 } else {
                     // Default JSON Schema template for new collections
                     this.form = { 
                         name: '', 
                         extraction_prompt: '', 
-                        llm_schema: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } 
+                        research_schema: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } 
                     };
                 }
                 
                 // Initialize Visual Editor
-                this.internalSchema = fromJSONSchema(this.form.llm_schema, 'root', false);
+                this.internalSchema = fromJSONSchema(this.form.research_schema, 'root', false);
                 this.editorMode = 'visual';
 
                 // Initialize the code JSON editor for editing
@@ -356,7 +356,7 @@
                             mode: 'code',
                             modes: ['code', 'tree'], // Allow user to toggle
                         });
-                        this.editor.set(this.form.llm_schema);
+                        this.editor.set(this.form.research_schema);
                     }
                 });
             },
@@ -372,10 +372,10 @@
             async saveCollection() {
                 try {
                     if (this.editorMode === 'visual') {
-                        this.form.llm_schema = toJSONSchema(this.internalSchema);
+                        this.form.research_schema = toJSONSchema(this.internalSchema);
                     } else {
                         // Pull the JSON object out of the editor instance
-                        this.form.llm_schema = this.editor.get();
+                        this.form.research_schema = this.editor.get();
                     }
                 } catch(e) {
                     alert("Invalid format in the schema editor!");
