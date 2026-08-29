@@ -1,31 +1,55 @@
 import typing
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Annotated, Literal
 from . import models
 
 # --- Schemas (Pydantic for I/O validation) ---
 
-class ResearchSchemaDef(BaseModel):
-    type: str
+class SchemaBase(BaseModel):
     description: str | None = None
-    properties: dict[str, "ResearchSchemaDef"] | None = None
-    items: typing.Optional["ResearchSchemaDef"] = None
+
+class ResearchSchemaString(SchemaBase):
+    type: Literal["string"] = "string"
+
+class ResearchSchemaInteger(SchemaBase):
+    type: Literal["integer"] = "integer"
+
+class ResearchSchemaNumber(SchemaBase):
+    type: Literal["number"] = "number"
+
+class ResearchSchemaBoolean(SchemaBase):
+    type: Literal["boolean"] = "boolean"
+
+class ResearchSchemaArray(SchemaBase):
+    type: Literal["array"] = "array"
+    items: "ResearchSchemaDef"
+
+class ResearchSchemaObject(SchemaBase):
+    type: Literal["object"] = "object"
+    properties: dict[str, "ResearchSchemaDef"] = Field(default_factory=dict)
     required: list[str] | None = None
+
+# Discriminated union allows Pydantic to automatically resolve the correct subclass based on the "type" field
+ResearchSchemaDef = Annotated[
+    ResearchSchemaString | ResearchSchemaInteger | ResearchSchemaNumber | ResearchSchemaBoolean | ResearchSchemaArray | ResearchSchemaObject,
+    Field(discriminator="type")
+]
 
 class CollectionCreate(BaseModel):
     name: str
     extraction_prompt: str
-    research_schema: models.ResearchSchema
+    research_schema: ResearchSchemaDef
 
 class CollectionUpdate(BaseModel):
     name: str | None = None
     extraction_prompt: str | None = None
-    research_schema: models.ResearchSchema | None = None
+    research_schema: ResearchSchemaDef | None = None
 
 class CollectionResponse(BaseModel):
     id: int
     name: str
     extraction_prompt: str
-    research_schema: models.ResearchSchema
+    research_schema: ResearchSchemaDef
     created_at: str
 
 class ProductCreate(BaseModel):

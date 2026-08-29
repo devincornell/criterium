@@ -36,10 +36,11 @@ def create_collection(
     data: CollectionCreate,
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
+    schema_model = criterium.models.ResearchSchema.from_dict(data.research_schema.model_dump(exclude_none=True))
     collection = db.add_collection(
         name=data.name,
         extraction_prompt=data.extraction_prompt,
-        research_schema=data.research_schema
+        research_schema=schema_model
     )
     return collection.to_dict()
 
@@ -61,11 +62,15 @@ def update_collection(
     db: criterium.ResearchDB = fastapi.Depends(get_db)
 ):
     try:
+        schema_model = None
+        if data.research_schema is not None:
+            schema_model = criterium.models.ResearchSchema.from_dict(data.research_schema.model_dump(exclude_none=True))
+            
         collection = db.update_collection(
             collection_id=collection_id,
             name=data.name,
             extraction_prompt=data.extraction_prompt,
-            research_schema=data.research_schema
+            research_schema=schema_model
         )
         # TODO: Trigger background job to re-extract data for all products in this collection
         return collection.to_dict()
