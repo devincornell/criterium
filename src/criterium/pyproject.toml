@@ -7,7 +7,9 @@ authors = [
     { name = "Devin Cornell", email = "devinj.cornell@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "sqlalchemy>=2.0.52",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
