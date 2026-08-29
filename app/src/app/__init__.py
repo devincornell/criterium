@@ -17,15 +17,14 @@ async def lifespan(app: fastapi.FastAPI):
     app.state.fc_app = FirecrawlApp(api_key=settings.firecrawl_api_key.get_secret_value())
     print("API Clients initialized successfully!")
 
-    # Set up the database using pathlib to ensure absolute paths
-    db_path = pathlib.Path(__file__).parent.parent.parent.parent / "research.db"
-    db_url = f"sqlite:///{db_path}"
-    
-    print(f"Connecting to database at {db_path}...")
+    # Set up the database 
+    db_url = settings.db_url
+    print(f"Connecting to database at {db_url}...")
     app.state.db = criterium.ResearchDB.from_connection_string(
         db_connect_string=db_url, 
         create_if_not_exists=True
     )
+
     yield
     print("Shutting down...")
 

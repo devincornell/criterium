@@ -25,12 +25,19 @@ def get_db(request: fastapi.Request) -> criterium.ResearchDB:
 class CollectionCreate(BaseModel):
     name: str
     extraction_prompt: str
-    llm_schema: dict[str, typing.Any]
+    llm_schema: criterium.models.LLMSchema
 
 class CollectionUpdate(BaseModel):
     name: str | None = None
     extraction_prompt: str | None = None
-    llm_schema: dict[str, typing.Any] | None = None
+    llm_schema: criterium.models.LLMSchema | None = None
+
+class CollectionResponse(BaseModel):
+    id: int
+    name: str
+    extraction_prompt: str
+    llm_schema: criterium.models.LLMSchema
+    created_at: str
 
 class ProductCreate(BaseModel):
     product_info: str
@@ -44,12 +51,12 @@ class ProductExtractResult(BaseModel):
 
 # --- Collections Endpoints ---
 
-@router.get("/collections")
+@router.get("/collections", response_model=list[CollectionResponse])
 def list_collections(db: criterium.ResearchDB = fastapi.Depends(get_db)):
     collections = db.get_all_collections()
     return collections.to_dict_list()
 
-@router.post("/collections")
+@router.post("/collections", response_model=CollectionResponse)
 def create_collection(
     data: CollectionCreate,
     db: criterium.ResearchDB = fastapi.Depends(get_db)
@@ -61,7 +68,7 @@ def create_collection(
     )
     return collection.to_dict()
 
-@router.get("/collections/{collection_id}")
+@router.get("/collections/{collection_id}", response_model=CollectionResponse)
 def get_collection(
     collection_id: int, 
     db: criterium.ResearchDB = fastapi.Depends(get_db)
@@ -72,7 +79,7 @@ def get_collection(
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
 
-@router.patch("/collections/{collection_id}")
+@router.patch("/collections/{collection_id}", response_model=CollectionResponse)
 def update_collection(
     collection_id: int, 
     data: CollectionUpdate,

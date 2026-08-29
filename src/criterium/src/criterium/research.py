@@ -61,7 +61,7 @@ class FirecrawlGeminiResearcher:
             config=types.GenerateContentConfig(
                 system_instruction=collection.extraction_prompt,
                 response_mime_type="application/json",
-                response_schema=collection.llm_schema
+                response_schema=collection.llm_schema.to_dict()
             ),
         )
         # The SDK returns the structured output as a JSON string in response.text

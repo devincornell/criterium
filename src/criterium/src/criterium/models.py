@@ -4,11 +4,49 @@ import typing
 import sqlalchemy
 
 @dataclasses.dataclass(frozen=True)
+class LLMSchema:
+    type: str
+    description: str | None = None
+    properties: dict[str, 'LLMSchema'] | None = None
+    items: typing.Optional['LLMSchema'] = None
+    required: list[str] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, typing.Any]) -> typing.Self:
+        properties = None
+        if data.get("properties"):
+            properties = {k: cls.from_dict(v) for k, v in data["properties"].items()}
+        
+        items = None
+        if data.get("items"):
+            items = cls.from_dict(data["items"])
+
+        return cls(
+            type=str(data["type"]),
+            description=str(data["description"]) if "description" in data else None,
+            properties=properties,
+            items=items,
+            required=list(data["required"]) if "required" in data else None
+        )
+
+    def to_dict(self) -> dict[str, typing.Any]:
+        res: dict[str, typing.Any] = {"type": self.type}
+        if self.description is not None:
+            res["description"] = self.description
+        if self.properties is not None:
+            res["properties"] = {k: v.to_dict() for k, v in self.properties.items()}
+        if self.items is not None:
+            res["items"] = self.items.to_dict()
+        if self.required is not None:
+            res["required"] = self.required
+        return res
+
+@dataclasses.dataclass(frozen=True)
 class ResearchCollection:
     id: int
     name: str
     extraction_prompt: str
-    llm_schema: dict[str, typing.Any]
+    llm_schema: LLMSchema
     created_at: datetime.datetime
 
     @classmethod
@@ -18,7 +56,7 @@ class ResearchCollection:
             id=int(data["id"]),
             name=str(data["name"]),
             extraction_prompt=str(data["extraction_prompt"]),
-            llm_schema=dict(data["llm_schema"]),
+            llm_schema=LLMSchema.from_dict(data["llm_schema"]),
             created_at=dt
         )
 
@@ -28,7 +66,7 @@ class ResearchCollection:
             id=row._mapping["id"],
             name=row._mapping["name"],
             extraction_prompt=row._mapping["extraction_prompt"],
-            llm_schema=row._mapping["llm_schema"],
+            llm_schema=LLMSchema.from_dict(row._mapping["llm_schema"]),
             created_at=row._mapping["created_at"]
         )
 
@@ -37,7 +75,7 @@ class ResearchCollection:
             "id": self.id,
             "name": self.name,
             "extraction_prompt": self.extraction_prompt,
-            "llm_schema": self.llm_schema,
+            "llm_schema": self.llm_schema.to_dict(),
             "created_at": self.created_at.isoformat()
         }
 

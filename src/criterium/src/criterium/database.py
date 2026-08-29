@@ -53,7 +53,21 @@ class ResearchDB:
         db_connect_string: str,
         create_if_not_exists: bool = False,
     ) -> typing.Self:
-        engine = sqlalchemy.create_engine(db_connect_string)
+        # SQLite in-memory databases using the default pool close/wipe the database on every connection close.
+        # StaticPool keeps the same in-memory connection open across multiple requests/threads.
+        if "sqlite:///:memory:" in db_connect_string:
+            engine = sqlalchemy.create_engine(
+                db_connect_string,
+                connect_args={"check_same_thread": False},
+                poolclass=sqlalchemy.pool.StaticPool,
+            )
+        elif db_connect_string.startswith("sqlite"):
+            engine = sqlalchemy.create_engine(
+                db_connect_string,
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            engine = sqlalchemy.create_engine(db_connect_string)
         metadata = sqlalchemy.MetaData()
         tabs = ResearchDBTables.from_metadata(metadata)
 
@@ -66,12 +80,12 @@ class ResearchDB:
         self, 
         name: str, 
         extraction_prompt: str, 
-        llm_schema: dict[str, typing.Any]
+        llm_schema: models.LLMSchema
     ) -> models.ResearchCollection:
         stmt = sqlalchemy.insert(self.tabs.research_collections).values(
             name=name,
             extraction_prompt=extraction_prompt,
-            llm_schema=llm_schema,
+            llm_schema=llm_schema.to_dict(),
             created_at=datetime.datetime.now(datetime.timezone.utc)
         ).returning(self.tabs.research_collections)
         
@@ -101,7 +115,7 @@ class ResearchDB:
         collection_id: int,
         name: str | None = None,
         extraction_prompt: str | None = None,
-        llm_schema: dict[str, typing.Any] | None = None
+        llm_schema: models.LLMSchema | None = None
     ) -> models.ResearchCollection:
         update_values = {}
         if name is not None:
@@ -109,7 +123,7 @@ class ResearchDB:
         if extraction_prompt is not None:
             update_values["extraction_prompt"] = extraction_prompt
         if llm_schema is not None:
-            update_values["llm_schema"] = llm_schema
+            update_values["llm_schema"] = llm_schema.to_dict()
             
         if not update_values:
             return self.get_collection(collection_id)
