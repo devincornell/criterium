@@ -16,9 +16,9 @@
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans h-screen flex overflow-hidden">
-    <div id="app" class="flex w-full h-full">
+    <div id="app" class="flex flex-col md:flex-row w-full h-full">
         <!-- Sidebar -->
-        <div class="w-64 bg-white border-r border-gray-200 flex flex-col">
+        <div class="w-full md:w-64 max-h-44 md:max-h-none bg-white border-b md:border-b-0 md:border-r border-gray-200 flex flex-col shrink-0">
             <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h1 class="text-lg font-bold text-gray-900">Collections</h1>
                 <button type="button" @click.prevent="initEditForm(null)" class="text-blue-600 hover:text-blue-800 font-bold text-2xl leading-none" title="New Collection">+</button>
@@ -36,7 +36,7 @@
         </div>
 
         <!-- Main Content -->
-        <div class="flex-1 flex flex-col h-full overflow-y-auto p-8">
+        <div class="flex-1 flex flex-col h-full overflow-y-auto p-4 md:p-8">
             <div v-if="!selectedCollection && !isCreating" class="flex items-center justify-center h-full text-gray-400">
                 <p>Select a collection from the sidebar, or create a new one.</p>
             </div>
@@ -88,9 +88,9 @@
             </div>
 
             <!-- View Collection -->
-            <div v-else class="max-w-5xl mx-auto w-full space-y-6 pb-12">
+            <div v-else class="max-w-[1400px] mx-auto w-full space-y-6 pb-12">
                 <!-- Header Card -->
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex justify-between items-start">
+                <div class="bg-white p-5 md:p-6 rounded-lg shadow-sm border border-gray-200 flex flex-col md:flex-row gap-4 justify-between items-start">
                     <div>
                         <h2 class="text-3xl font-bold text-gray-900">{{ selectedCollection.name }}</h2>
                         <p class="text-sm text-gray-500 mt-1">ID: {{ selectedCollection.id }} | Created: {{ new Date(selectedCollection.created_at).toLocaleString() }}</p>
@@ -102,7 +102,7 @@
                 </div>
 
                 <!-- Details Grid -->
-                <div class="grid grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <h3 class="text-lg font-semibold mb-3 text-gray-900">Extraction Prompt</h3>
                         <p class="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">{{ selectedCollection.extraction_prompt }}</p>
@@ -114,63 +114,135 @@
                 </div>
 
                 <!-- Products Section -->
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mt-6">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-bold text-gray-900">Products / Items ({{ products.length }})</h3>
-                        <div class="flex space-x-2">
-                            <input v-model="newProductQuery" type="text" placeholder="e.g. ThinkPad X1 Carbon Gen 11" class="border border-gray-300 rounded-lg p-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 mt-6 overflow-hidden">
+                    <div class="p-5 md:p-6 border-b border-gray-200 flex flex-col lg:flex-row gap-4 justify-between lg:items-center">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-900">Research results</h3>
+                            <p class="text-sm text-gray-500 mt-1">{{ products.length }} completed products</p>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+                            <input v-model="newProductQuery" @keyup.enter="extractProduct" type="text" placeholder="e.g. ThinkPad X1 Carbon Gen 11" class="border border-gray-300 rounded-lg p-2 text-sm w-full sm:w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
                             <button type="button" @click.prevent="extractProduct" :disabled="isSubmittingResearch" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 shadow-sm transition-colors">
                                 {{ isSubmittingResearch ? 'Queueing...' : 'Research & Extract' }}
                             </button>
                         </div>
                     </div>
 
-                    <div v-if="researchJobs.length" class="mb-5 space-y-2">
-                        <div v-for="job in researchJobs" :key="job.id" class="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3 text-sm">
-                            <div>
-                                <span class="font-medium text-gray-900">{{ job.product_info }}</span>
-                                <p v-if="job.error_message" class="text-red-600 mt-1">{{ job.error_message }}</p>
+                    <div class="px-5 md:px-6 border-b border-gray-200 flex gap-6">
+                        <button @click="productView = 'compare'" :class="productView === 'compare' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-800'" class="py-3 text-sm font-semibold border-b-2">Compare</button>
+                        <button @click="productView = 'jobs'" :class="productView === 'jobs' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-800'" class="py-3 text-sm font-semibold border-b-2 flex items-center gap-2">
+                            Research jobs
+                            <span v-if="activeJobCount" class="inline-flex items-center justify-center min-w-5 h-5 px-1 text-xs text-white bg-blue-600 rounded-full">{{ activeJobCount }}</span>
+                        </button>
+                    </div>
+
+                    <div v-if="productView === 'compare'">
+                        <div v-if="products.length" class="px-5 md:px-6 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-3">
+                            <div class="relative w-full sm:w-80">
+                                <svg class="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"></path></svg>
+                                <input v-model="productSearch" type="search" placeholder="Filter products" class="w-full border border-gray-300 rounded-lg py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none">
                             </div>
-                            <span :class="job.status === 'failed' ? 'text-red-600' : job.status === 'succeeded' ? 'text-green-700' : 'text-blue-600'" class="font-medium capitalize">
-                                {{ job.stage || job.status }}
-                            </span>
+                            <span class="text-xs text-gray-500 whitespace-nowrap">{{ filteredProducts.length }} shown</span>
+                        </div>
+                        <div v-if="products.length === 0" class="text-gray-500 text-sm text-center py-14 px-6">
+                            No completed products yet.
+                        </div>
+                        <div v-else class="overflow-x-auto">
+                            <table class="w-full border-collapse text-sm">
+                                <thead class="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th class="sticky left-0 z-10 bg-gray-50 min-w-56 px-5 py-3 text-left font-semibold border-b border-r border-gray-200">Product</th>
+                                        <th v-for="column in productColumns" :key="column.key" class="min-w-40 px-4 py-3 text-left font-semibold border-b border-gray-200">
+                                            <button @click="sortProducts(column.key)" class="w-full flex items-center justify-between gap-2 text-left hover:text-gray-900" :title="column.description || column.label">
+                                                <span>{{ column.label }}</span>
+                                                <span class="text-xs text-gray-400">{{ sortKey === column.key ? (sortDirection === 'asc' ? '↑' : '↓') : '↕' }}</span>
+                                            </button>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    <tr v-for="product in filteredProducts" :key="product.id" @click="selectedProduct = product" class="group cursor-pointer hover:bg-green-50/60 focus-within:bg-green-50/60">
+                                        <td class="sticky left-0 z-10 bg-white group-hover:bg-green-50 px-5 py-4 border-r border-gray-200">
+                                            <button class="text-left w-full" @click="selectedProduct = product">
+                                                <span class="block font-semibold text-gray-900">{{ productLabel(product) }}</span>
+                                                <span class="block text-xs text-gray-500 mt-1">{{ product.references?.length || 0 }} sources</span>
+                                            </button>
+                                        </td>
+                                        <td v-for="column in productColumns" :key="column.key" class="px-4 py-4 align-top text-gray-700">
+                                            <span v-if="getValue(product.extracted_data, column.path) === null || getValue(product.extracted_data, column.path) === undefined" class="inline-flex px-2 py-1 rounded bg-amber-50 text-amber-700 text-xs font-medium">Not found</span>
+                                            <span v-else-if="column.type === 'boolean'" :class="getValue(product.extracted_data, column.path) ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'" class="inline-flex px-2 py-1 rounded text-xs font-medium">{{ getValue(product.extracted_data, column.path) ? 'Yes' : 'No' }}</span>
+                                            <span v-else class="line-clamp-3">{{ formatValue(getValue(product.extracted_data, column.path), column.type) }}</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div v-if="filteredProducts.length === 0" class="py-12 text-center text-sm text-gray-500">No products match this filter.</div>
                         </div>
                     </div>
-                    
-                    <div class="space-y-4">
-                        <div v-if="products.length === 0" class="text-gray-500 text-sm text-center py-8 border-2 border-dashed border-gray-200 rounded-lg">
-                            No products have been extracted for this collection yet.
-                        </div>
-                        <div v-for="product in products" :key="product.id" class="border border-gray-200 rounded-xl p-5 bg-gray-50">
-                            <div class="flex justify-between items-start mb-3">
-                                <div>
-                                    <h4 class="font-bold text-gray-900">{{ product.name }}</h4>
-                                    <a :href="product.source_url" target="_blank" class="text-xs text-blue-600 hover:underline flex items-center mt-1">
-                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                        {{ product.source_url }}
-                                    </a>
+
+                    <div v-else class="p-5 md:p-6">
+                        <div v-if="researchJobs.length === 0" class="text-gray-500 text-sm text-center py-10">No research jobs yet.</div>
+                        <div v-else class="divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                            <div v-for="job in researchJobs" :key="job.id" class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-4 text-sm">
+                                <div class="min-w-0">
+                                    <span class="font-medium text-gray-900 block truncate">{{ job.product_info }}</span>
+                                    <p v-if="job.error_message" class="text-red-600 mt-1">{{ job.error_message }}</p>
+                                    <p v-else class="text-xs text-gray-500 mt-1">Started {{ formatDate(job.started_at || job.created_at) }}</p>
                                 </div>
-                                <button @click="deleteProduct(product.id)" class="text-red-500 hover:text-red-700 text-sm font-medium px-2 py-1 rounded hover:bg-red-50">Delete</button>
-                            </div>
-                            <!-- Display Extracted Data as beautiful JSON -->
-                            <div class="mt-3 bg-white p-4 rounded-lg border border-gray-200 overflow-x-auto shadow-inner">
-                                <pre class="text-xs text-gray-800 font-mono">{{ JSON.stringify(product.extracted_data, null, 2) }}</pre>
-                            </div>
-                            <div v-if="product.references?.length" class="mt-3">
-                                <h5 class="text-xs font-semibold uppercase text-gray-500 mb-2">References</h5>
-                                <ul class="space-y-1">
-                                    <li v-for="reference in product.references" :key="reference.id">
-                                        <a :href="reference.url" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-600 hover:underline">
-                                            {{ reference.title || reference.url }}
-                                        </a>
-                                        <span class="ml-2 text-xs text-gray-400">{{ reference.provider }}</span>
-                                    </li>
-                                </ul>
+                                <span :class="job.status === 'failed' ? 'bg-red-50 text-red-700' : job.status === 'succeeded' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'" class="self-start sm:self-auto px-2.5 py-1 rounded text-xs font-semibold capitalize whitespace-nowrap">
+                                    {{ job.stage || job.status }}
+                                </span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div v-if="selectedProduct" class="fixed inset-0 z-40 flex justify-end" @keydown.esc="selectedProduct = null">
+            <button class="absolute inset-0 bg-gray-900/30" @click="selectedProduct = null" aria-label="Close product details"></button>
+            <aside class="relative z-10 w-full sm:max-w-xl h-full bg-white shadow-2xl overflow-y-auto" role="dialog" aria-modal="true" aria-label="Product details">
+                <div class="sticky top-0 z-10 bg-white border-b border-gray-200 px-5 py-4 flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <p class="text-xs font-semibold uppercase text-green-700">Research result</p>
+                        <h3 class="text-xl font-bold text-gray-900 mt-1">{{ productLabel(selectedProduct) }}</h3>
+                    </div>
+                    <button @click="selectedProduct = null" class="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded" title="Close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="p-5 space-y-7">
+                    <section>
+                        <h4 class="text-xs font-semibold uppercase text-gray-500 mb-3">Specifications</h4>
+                        <dl class="divide-y divide-gray-200 border-y border-gray-200">
+                            <div v-for="column in productColumns" :key="column.key" class="grid grid-cols-[minmax(8rem,0.8fr)_minmax(0,1.2fr)] gap-4 py-3">
+                                <dt class="text-sm font-medium text-gray-600" :title="column.description">{{ column.label }}</dt>
+                                <dd class="text-sm text-gray-900 break-words">{{ formatDetailValue(getValue(selectedProduct.extracted_data, column.path), column.type) }}</dd>
+                            </div>
+                        </dl>
+                    </section>
+                    <section>
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-xs font-semibold uppercase text-gray-500">Sources</h4>
+                            <a :href="selectedProduct.source_url" target="_blank" rel="noopener noreferrer" class="text-xs font-medium text-blue-600 hover:underline">Primary source ↗</a>
+                        </div>
+                        <ul v-if="selectedProduct.references?.length" class="space-y-2">
+                            <li v-for="reference in selectedProduct.references" :key="reference.id" class="border border-gray-200 rounded-lg p-3">
+                                <a :href="reference.url" target="_blank" rel="noopener noreferrer" class="text-sm font-medium text-blue-700 hover:underline break-words">{{ reference.title || reference.url }}</a>
+                                <span class="block text-xs text-gray-500 mt-1">{{ reference.provider }}</span>
+                            </li>
+                        </ul>
+                        <p v-else class="text-sm text-gray-500">No references recorded.</p>
+                    </section>
+                    <details class="border border-gray-200 rounded-lg">
+                        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-gray-700">Raw JSON</summary>
+                        <pre class="border-t border-gray-200 bg-gray-50 p-4 overflow-x-auto text-xs text-gray-800">{{ JSON.stringify(selectedProduct.extracted_data, null, 2) }}</pre>
+                    </details>
+                    <div class="flex justify-end pt-2">
+                        <button @click="deleteProduct(selectedProduct.id)" class="px-4 py-2 text-sm font-medium border border-red-200 rounded-lg text-red-600 hover:bg-red-50">Delete product</button>
+                    </div>
+                </div>
+            </aside>
         </div>
     </div>
 
@@ -307,11 +379,112 @@
                 suggestionDescription: '',
                 isSuggesting: false,
                 isSubmittingResearch: false,
-                jobPollTimer: null
+                jobPollTimer: null,
+                productView: 'compare',
+                productSearch: '',
+                sortKey: '',
+                sortDirection: 'asc',
+                selectedProduct: null
+            }
+        },
+
+        computed: {
+            productColumns() {
+                return this.flattenSchemaProperties(
+                    this.selectedCollection?.research_schema?.properties || {}
+                );
+            },
+            filteredProducts() {
+                const query = this.productSearch.trim().toLowerCase();
+                let rows = this.products.filter(product => {
+                    if (!query) return true;
+                    const values = this.productColumns.map(column =>
+                        this.formatValue(this.getValue(product.extracted_data, column.path), column.type)
+                    );
+                    return [this.productLabel(product), ...values].join(' ').toLowerCase().includes(query);
+                });
+                if (!this.sortKey) return rows;
+                const column = this.productColumns.find(item => item.key === this.sortKey);
+                if (!column) return rows;
+                return [...rows].sort((left, right) => {
+                    const leftValue = this.getValue(left.extracted_data, column.path);
+                    const rightValue = this.getValue(right.extracted_data, column.path);
+                    if (leftValue == null && rightValue == null) return 0;
+                    if (leftValue == null) return 1;
+                    if (rightValue == null) return -1;
+                    const comparison = typeof leftValue === 'number' && typeof rightValue === 'number'
+                        ? leftValue - rightValue
+                        : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+                    return this.sortDirection === 'asc' ? comparison : -comparison;
+                });
+            },
+            activeJobCount() {
+                return this.researchJobs.filter(job => ['queued', 'running'].includes(job.status)).length;
             }
         },
 
         methods: {
+            flattenSchemaProperties(properties, path = [], labels = []) {
+                const columns = [];
+                for (const [name, schema] of Object.entries(properties)) {
+                    const nextPath = [...path, name];
+                    const nextLabels = [...labels, this.humanize(name)];
+                    if (schema.type === 'object' && schema.properties) {
+                        columns.push(...this.flattenSchemaProperties(schema.properties, nextPath, nextLabels));
+                    } else {
+                        columns.push({
+                            key: nextPath.join('.'),
+                            path: nextPath,
+                            label: nextLabels.join(' / '),
+                            type: schema.type,
+                            description: schema.description || ''
+                        });
+                    }
+                }
+                return columns;
+            },
+            humanize(value) {
+                return value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+            },
+            getValue(data, path) {
+                return path.reduce((value, key) => value?.[key], data);
+            },
+            formatValue(value, type) {
+                if (value == null) return 'Not found';
+                if (type === 'boolean') return value ? 'Yes' : 'No';
+                if (Array.isArray(value)) {
+                    if (value.length === 0) return 'None';
+                    if (value.every(item => typeof item !== 'object')) {
+                        const preview = value.slice(0, 3).join(', ');
+                        return value.length > 3 ? `${preview} +${value.length - 3}` : preview;
+                    }
+                    return `${value.length} ${value.length === 1 ? 'item' : 'items'}`;
+                }
+                if (typeof value === 'object') return JSON.stringify(value);
+                return String(value);
+            },
+            formatDetailValue(value, type) {
+                if (value == null) return 'Not found';
+                if (type === 'boolean') return value ? 'Yes' : 'No';
+                if (typeof value === 'object') return JSON.stringify(value, null, 2);
+                return String(value);
+            },
+            productLabel(product) {
+                const data = product.extracted_data || {};
+                return data.title || data.name || data.model || data.product_name
+                    || product.name.replace(/^Research:\s*/, '');
+            },
+            sortProducts(key) {
+                if (this.sortKey === key) {
+                    this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.sortKey = key;
+                    this.sortDirection = 'asc';
+                }
+            },
+            formatDate(value) {
+                return value ? new Date(value).toLocaleString() : 'Not started';
+            },
             toggleEditorMode(mode) {
                 if (this.editorMode === mode) return;
                 
@@ -342,6 +515,9 @@
                 this.isEditing = false;
                 this.isCreating = false;
                 this.newProductQuery = '';
+                this.productSearch = '';
+                this.sortKey = '';
+                this.selectedProduct = null;
                 
                 // Fetch products for this collection
                 const res = await fetch(`/collections/${col.id}/products`);
@@ -502,6 +678,7 @@
             async deleteProduct(id) {
                 if (!confirm("Delete this extracted product?")) return;
                 await fetch(`/collections/${this.selectedCollection.id}/products/${id}`, { method: 'DELETE' });
+                if (this.selectedProduct?.id === id) this.selectedProduct = null;
                 const pRes = await fetch(`/collections/${this.selectedCollection.id}/products`);
                 this.products = await pRes.json();
             }
