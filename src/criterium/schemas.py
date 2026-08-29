@@ -70,7 +70,23 @@ class CollectionResponse(BaseModel):
     created_at: datetime.datetime
 
 class ProductCreate(BaseModel):
-    product_info: str
+    product_info: str = Field(min_length=1, max_length=2000)
+
+class ResearchJobsCreate(BaseModel):
+    product_infos: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    @model_validator(mode="after")
+    def normalize_product_infos(self):
+        normalized = [product_info.strip() for product_info in self.product_infos]
+        if any(not product_info for product_info in normalized):
+            raise ValueError("Product names must not be empty.")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Product names must be unique within a batch.")
+        self.product_infos = normalized
+        return self
 
 class ResearchJobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

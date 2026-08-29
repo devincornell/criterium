@@ -3,6 +3,7 @@ from criterium.schemas import (
     CollectionCreate,
     CollectionSuggestionRequest,
     ProductCreate,
+    ResearchJobsCreate,
     ResearchSchemaObject,
 )
 
@@ -95,10 +96,44 @@ def test_extract_product_posts_to_nested_resource() -> None:
     assert session.calls == [
         (
             "POST",
-            "http://example.test/collections/3/research-jobs",
+            "http://example.test/collections/3/products",
             {"product_info": "Example"},
         )
     ]
+
+
+def test_create_research_jobs_posts_batch() -> None:
+    response = FakeResponse([
+        {
+            "id": job_id,
+            "collection_id": 3,
+            "product_info": product_info,
+            "status": "queued",
+            "stage": None,
+            "product_id": None,
+            "error_message": None,
+            "attempt_count": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "started_at": None,
+            "completed_at": None,
+        }
+        for job_id, product_info in [(8, "First"), (9, "Second")]
+    ])
+    session = FakeSession(response)
+    client = CriteriumClient("http://example.test")
+    client.session = session
+
+    jobs = client.create_research_jobs(
+        3,
+        ResearchJobsCreate(product_infos=["First", "Second"]),
+    )
+
+    assert [job.product_info for job in jobs] == ["First", "Second"]
+    assert session.calls == [(
+        "POST",
+        "http://example.test/collections/3/research-jobs",
+        {"product_infos": ["First", "Second"]},
+    )]
 
 
 def test_suggest_collection_posts_description() -> None:

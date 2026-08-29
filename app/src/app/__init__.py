@@ -37,20 +37,25 @@ async def lifespan(app: fastapi.FastAPI):
         poll_interval=settings.research_worker_poll_seconds,
     )
     app.state.research_worker_stop = threading.Event()
-    app.state.research_worker_thread = threading.Thread(
+    app.state.research_worker_threads = [
+      threading.Thread(
         target=app.state.research_worker.run_forever,
         args=(app.state.research_worker_stop,),
-        name="criterium-research-worker",
+        name=f"criterium-research-worker-{worker_number + 1}",
         daemon=True,
-    )
-    app.state.research_worker_thread.start()
+      )
+      for worker_number in range(settings.research_worker_concurrency)
+    ]
+    for worker_thread in app.state.research_worker_threads:
+      worker_thread.start()
 
     try:
         yield
     finally:
         app.state.research_worker_stop.set()
-        app.state.research_worker_thread.join(timeout=5)
-        if not app.state.research_worker_thread.is_alive():
+        for worker_thread in app.state.research_worker_threads:
+          worker_thread.join(timeout=5)
+        if not any(worker_thread.is_alive() for worker_thread in app.state.research_worker_threads):
             app.state.db.engine.dispose()
         print("Shutting down...")
 

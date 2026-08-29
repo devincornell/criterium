@@ -55,15 +55,28 @@ class CriteriumClient:
         return [schemas.ProductResponse.model_validate(item) for item in response.json()]
 
     def extract_product(self, collection_id: int, request: schemas.ProductCreate) -> schemas.ResearchJobResponse:
-        return self.create_research_job(collection_id, request)
+        response = self.session.post(
+            f"{self.base_url}/collections/{collection_id}/products",
+            json=request.model_dump(exclude_none=True)
+        )
+        response.raise_for_status()
+        return schemas.ResearchJobResponse.model_validate(response.json())
 
     def create_research_job(self, collection_id: int, request: schemas.ProductCreate) -> schemas.ResearchJobResponse:
+        batch = schemas.ResearchJobsCreate(product_infos=[request.product_info])
+        return self.create_research_jobs(collection_id, batch)[0]
+
+    def create_research_jobs(
+        self,
+        collection_id: int,
+        request: schemas.ResearchJobsCreate,
+    ) -> list[schemas.ResearchJobResponse]:
         response = self.session.post(
             f"{self.base_url}/collections/{collection_id}/research-jobs",
             json=request.model_dump(exclude_none=True)
         )
         response.raise_for_status()
-        return schemas.ResearchJobResponse.model_validate(response.json())
+        return [schemas.ResearchJobResponse.model_validate(item) for item in response.json()]
 
     def list_research_jobs(self, collection_id: int | None = None) -> list[schemas.ResearchJobResponse]:
         path = "/research-jobs"

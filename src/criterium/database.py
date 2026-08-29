@@ -92,21 +92,9 @@ class ResearchDB:
         db_connect_string: str,
         create_if_not_exists: bool = False,
     ) -> typing.Self:
-        # SQLite in-memory databases using the default pool close/wipe the database on every connection close.
-        # StaticPool keeps the same in-memory connection open across multiple requests/threads.
-        if "sqlite:///:memory:" in db_connect_string:
-            engine = sqlalchemy.create_engine(
-                db_connect_string,
-                connect_args={"check_same_thread": False},
-                poolclass=sqlalchemy.pool.StaticPool,
-            )
-        elif db_connect_string.startswith("sqlite"):
-            engine = sqlalchemy.create_engine(
-                db_connect_string,
-                connect_args={"check_same_thread": False},
-            )
-        else:
-            engine = sqlalchemy.create_engine(db_connect_string)
+        if ":memory:" in db_connect_string:
+            raise ValueError("Criterium requires a file-backed database.")
+        engine = sqlalchemy.create_engine(db_connect_string)
         metadata = sqlalchemy.MetaData()
         tabs = ResearchDBTables.from_metadata(metadata)
 
@@ -200,19 +188,30 @@ class ResearchDB:
                 raise exceptions.CollectionNotFoundError(f"Collection with id {collection_id} not found.")
 
     def add_research_job(self, collection_id: int, product_info: str) -> models.ResearchJob:
+        return self.add_research_jobs(collection_id, [product_info])[0]
+
+    def add_research_jobs(
+        self,
+        collection_id: int,
+        product_infos: typing.Iterable[str],
+    ) -> models.ResearchJobCollection:
         self.get_collection(collection_id)
-        stmt = sqlalchemy.insert(self.tabs.research_jobs).values(
-            collection_id=collection_id,
-            product_info=product_info,
-            status="queued",
-            attempt_count=0,
-            created_at=datetime.datetime.now(datetime.timezone.utc),
-        ).returning(self.tabs.research_jobs)
+        created_at = datetime.datetime.now(datetime.timezone.utc)
         with self.engine.begin() as conn:
-            row = conn.execute(stmt).fetchone()
-            if not row:
-                raise exceptions.CriteriumError("Failed to create research job.")
-            return models.ResearchJob.from_row(row)
+            jobs = []
+            for product_info in product_infos:
+                stmt = sqlalchemy.insert(self.tabs.research_jobs).values(
+                    collection_id=collection_id,
+                    product_info=product_info,
+                    status="queued",
+                    attempt_count=0,
+                    created_at=created_at,
+                ).returning(self.tabs.research_jobs)
+                row = conn.execute(stmt).fetchone()
+                if not row:
+                    raise exceptions.CriteriumError("Failed to create research job.")
+                jobs.append(models.ResearchJob.from_row(row))
+            return models.ResearchJobCollection(jobs)
 
     def get_research_job(self, job_id: int) -> models.ResearchJob:
         stmt = sqlalchemy.select(self.tabs.research_jobs).where(

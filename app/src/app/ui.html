@@ -120,10 +120,10 @@
                             <h3 class="text-xl font-bold text-gray-900">Research results</h3>
                             <p class="text-sm text-gray-500 mt-1">{{ products.length }} completed products</p>
                         </div>
-                        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-                            <input v-model="newProductQuery" @keyup.enter="extractProduct" type="text" placeholder="e.g. ThinkPad X1 Carbon Gen 11" class="border border-gray-300 rounded-lg p-2 text-sm w-full sm:w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
+                            <textarea v-model="newProductQuery" rows="3" placeholder="One product per line&#10;ThinkPad X1 Carbon Gen 11&#10;Dell XPS 13" class="border border-gray-300 rounded-lg p-2 text-sm w-full sm:w-80 resize-y focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"></textarea>
                             <button type="button" @click.prevent="extractProduct" :disabled="isSubmittingResearch" class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 shadow-sm transition-colors">
-                                {{ isSubmittingResearch ? 'Queueing...' : 'Research & Extract' }}
+                                {{ isSubmittingResearch ? 'Queueing...' : `Research ${productInputCount || ''}` }}
                             </button>
                         </div>
                     </div>
@@ -420,6 +420,15 @@
             },
             activeJobCount() {
                 return this.researchJobs.filter(job => ['queued', 'running'].includes(job.status)).length;
+            },
+            productInputs() {
+                return this.newProductQuery
+                    .split('\n')
+                    .map(product => product.trim())
+                    .filter(Boolean);
+            },
+            productInputCount() {
+                return this.productInputs.length;
             }
         },
 
@@ -641,21 +650,21 @@
                 await this.fetchCollections();
             },
             async extractProduct() {
-                if (!this.newProductQuery) return;
+                if (!this.productInputs.length) return;
                 this.isSubmittingResearch = true;
                 try {
                     const res = await fetch(`/collections/${this.selectedCollection.id}/research-jobs`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ product_info: this.newProductQuery })
+                        body: JSON.stringify({ product_infos: this.productInputs })
                     });
                     if (!res.ok) {
                         const err = await res.json();
                         throw new Error(JSON.stringify(err));
                     }
-                    const job = await res.json();
+                    const jobs = await res.json();
                     this.newProductQuery = '';
-                    this.researchJobs.unshift(job);
+                    this.researchJobs.unshift(...jobs);
                 } catch (e) {
                     alert("Research Error: " + e.message);
                 } finally {

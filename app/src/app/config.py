@@ -1,13 +1,14 @@
 import functools
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 
 class Settings(BaseSettings):
     gemini_api_key: SecretStr
     firecrawl_api_key: SecretStr
-    db_url: str|None = "sqlite:///:memory:"
+    db_url: str = "sqlite:///./criterium.db"
     research_worker_poll_seconds: float = 0.5
+    research_worker_concurrency: int = Field(default=3, ge=1, le=16)
 
     # This tells pydantic-settings to look for a .env file in the root
     model_config = SettingsConfigDict(

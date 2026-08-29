@@ -71,11 +71,11 @@ class FakeCollectionSuggester:
 
 
 @pytest.fixture
-def app():
+def app(tmp_path):
     settings = Settings(
         gemini_api_key="test-gemini-key",
         firecrawl_api_key="test-firecrawl-key",
-        db_url="sqlite:///:memory:",
+        db_url=f"sqlite:///{tmp_path / 'api.db'}",
         research_worker_poll_seconds=3600,
     )
     test_app = create_app(settings=settings)
@@ -162,15 +162,16 @@ def test_product_research_persists_data_and_references(client: TestClient) -> No
 
     response = client.post(
         f"/collections/{collection_id}/research-jobs",
-        json={"product_info": "Example"},
+        json={"product_infos": ["Example"]},
     )
 
     assert response.status_code == 202
-    assert response.json()["status"] == "queued"
-    assert response.json()["product_id"] is None
+    queued_job = response.json()[0]
+    assert queued_job["status"] == "queued"
+    assert queued_job["product_id"] is None
 
     assert client.app.state.research_worker.run_once() is True
-    job = client.get(f"/research-jobs/{response.json()['id']}").json()
+    job = client.get(f"/research-jobs/{queued_job['id']}").json()
     assert job["status"] == "succeeded"
 
     products = client.get(f"/collections/{collection_id}/products").json()
@@ -194,10 +195,10 @@ def test_product_cannot_be_read_through_another_collection(client: TestClient) -
     other_collection_id = create_collection(client)
     response = client.post(
         f"/collections/{collection_id}/research-jobs",
-        json={"product_info": "Example"},
+        json={"product_infos": ["Example"]},
     )
     client.app.state.research_worker.run_once()
-    product_id = client.get(f"/research-jobs/{response.json()['id']}").json()["product_id"]
+    product_id = client.get(f"/research-jobs/{response.json()[0]['id']}").json()["product_id"]
 
     assert client.get(
         f"/collections/{other_collection_id}/products/{product_id}"
@@ -208,13 +209,13 @@ def test_duplicate_source_marks_second_job_failed(client: TestClient) -> None:
     collection_id = create_collection(client)
     url = f"/collections/{collection_id}/research-jobs"
 
-    first = client.post(url, json={"product_info": "First"})
+    first = client.post(url, json={"product_infos": ["First"]})
     client.app.state.research_worker.run_once()
-    assert client.get(f"/research-jobs/{first.json()['id']}").json()["status"] == "succeeded"
+    assert client.get(f"/research-jobs/{first.json()[0]['id']}").json()["status"] == "succeeded"
 
-    second = client.post(url, json={"product_info": "Second"})
+    second = client.post(url, json={"product_infos": ["Second"]})
     client.app.state.research_worker.run_once()
-    failed_job = client.get(f"/research-jobs/{second.json()['id']}").json()
+    failed_job = client.get(f"/research-jobs/{second.json()[0]['id']}").json()
     assert failed_job["status"] == "failed"
     assert "already exists" in failed_job["error_message"]
 
@@ -225,10 +226,10 @@ def test_research_failure_is_reported_on_job(app) -> None:
         collection_id = create_collection(client)
         response = client.post(
             f"/collections/{collection_id}/research-jobs",
-            json={"product_info": "Example"},
+            json={"product_infos": ["Example"]},
         )
         client.app.state.research_worker.run_once()
-        job_response = client.get(f"/research-jobs/{response.json()['id']}")
+        job_response = client.get(f"/research-jobs/{response.json()[0]['id']}")
 
     assert response.status_code == 202
     assert job_response.json()["status"] == "failed"
@@ -241,10 +242,10 @@ def test_incomplete_research_result_is_reported_on_job(app) -> None:
         collection_id = create_collection(client)
         response = client.post(
             f"/collections/{collection_id}/research-jobs",
-            json={"product_info": "Example"},
+            json={"product_infos": ["Example"]},
         )
         client.app.state.research_worker.run_once()
-        job = client.get(f"/research-jobs/{response.json()['id']}").json()
+        job = client.get(f"/research-jobs/{response.json()[0]['id']}").json()
 
     assert job["status"] == "failed"
     assert "required property" in job["error_message"]
@@ -256,10 +257,10 @@ def test_unknown_research_value_is_persisted_as_null(app) -> None:
         collection_id = create_collection(client)
         response = client.post(
             f"/collections/{collection_id}/research-jobs",
-            json={"product_info": "Example"},
+            json={"product_infos": ["Example"]},
         )
         client.app.state.research_worker.run_once()
-        job = client.get(f"/research-jobs/{response.json()['id']}").json()
+        job = client.get(f"/research-jobs/{response.json()[0]['id']}").json()
         product = client.get(
             f"/collections/{collection_id}/products/{job['product_id']}"
         ).json()
@@ -272,12 +273,48 @@ def test_research_job_list_and_missing_job(client: TestClient) -> None:
     collection_id = create_collection(client)
     response = client.post(
         f"/collections/{collection_id}/research-jobs",
-        json={"product_info": "Example"},
+        json={"product_infos": ["Example"]},
     )
 
     jobs = client.get(f"/collections/{collection_id}/research-jobs").json()
-    assert [job["id"] for job in jobs] == [response.json()["id"]]
+    assert [job["id"] for job in jobs] == [response.json()[0]["id"]]
     assert client.get("/research-jobs/999").status_code == 404
+
+
+def test_batch_research_request_queues_one_job_per_product(client: TestClient) -> None:
+    collection_id = create_collection(client)
+
+    response = client.post(
+        f"/collections/{collection_id}/research-jobs",
+        json={"product_infos": ["First", "Second", "Third"]},
+    )
+
+    assert response.status_code == 202
+    assert [job["product_info"] for job in response.json()] == [
+        "First",
+        "Second",
+        "Third",
+    ]
+    assert all(job["status"] == "queued" for job in response.json())
+
+
+@pytest.mark.parametrize(
+    "product_infos",
+    [[], ["First", "First"], ["First", "   "]],
+)
+def test_batch_research_request_rejects_invalid_products(
+    client: TestClient,
+    product_infos: list[str],
+) -> None:
+    collection_id = create_collection(client)
+
+    response = client.post(
+        f"/collections/{collection_id}/research-jobs",
+        json={"product_infos": product_infos},
+    )
+
+    assert response.status_code == 422
+    assert client.get(f"/collections/{collection_id}/research-jobs").json() == []
 
 
 def test_legacy_product_post_queues_research(client: TestClient) -> None:

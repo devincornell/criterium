@@ -11,13 +11,18 @@ from criterium.schemas import ResearchSchemaObject, ResearchSchemaString
 
 
 @pytest.fixture
-def db():
+def db(tmp_path):
     database = ResearchDB.from_connection_string(
-        "sqlite:///:memory:",
+        f"sqlite:///{tmp_path / 'test.db'}",
         create_if_not_exists=True,
     )
     yield database
     database.engine.dispose()
+
+
+def test_in_memory_database_is_rejected() -> None:
+    with pytest.raises(ValueError, match="file-backed"):
+        ResearchDB.from_connection_string("sqlite:///:memory:")
 
 
 def make_schema() -> ResearchSchemaObject:
@@ -100,3 +105,14 @@ def test_research_job_claim_and_completion_are_persisted(db: ResearchDB) -> None
     assert completed.status == "succeeded"
     assert completed.product_id is not None
     assert db.get_product(completed.product_id).extracted_data == {"title": "Example"}
+
+
+def test_research_jobs_are_enqueued_as_an_ordered_batch(db: ResearchDB) -> None:
+    collection = db.add_collection("Books", "Extract title", make_schema())
+
+    jobs = db.add_research_jobs(collection.id, ["First", "Second", "Third"])
+
+    assert [job.product_info for job in jobs] == ["First", "Second", "Third"]
+    assert all(job.status == "queued" for job in jobs)
+    assert len({job.created_at for job in jobs}) == 1
+    assert db.claim_next_research_job().id == jobs[0].id

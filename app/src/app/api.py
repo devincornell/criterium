@@ -6,7 +6,7 @@ import criterium
 from criterium.schemas import (
     CollectionCreate, CollectionUpdate, CollectionResponse,
     CollectionSuggestionRequest, CollectionSuggestionResponse,
-    ProductCreate, ProductResponse, ResearchJobResponse
+    ProductCreate, ProductResponse, ResearchJobsCreate, ResearchJobResponse
 )
 
 router = fastapi.APIRouter()
@@ -136,23 +136,33 @@ def list_products(
     status_code=fastapi.status.HTTP_202_ACCEPTED,
     deprecated=True,
 )
-@router.post(
-    "/collections/{collection_id}/research-jobs",
-    response_model=ResearchJobResponse,
-    status_code=fastapi.status.HTTP_202_ACCEPTED,
-)
-def create_research_job(
-    collection_id: int, 
+def create_legacy_research_job(
+    collection_id: int,
     data: ProductCreate,
     db: criterium.ResearchDB = fastapi.Depends(get_db),
 ):
+    try:
+        return db.add_research_job(collection_id, data.product_info)
+    except criterium.CollectionNotFoundError as e:
+        raise fastapi.HTTPException(status_code=404, detail=str(e))
+
+@router.post(
+    "/collections/{collection_id}/research-jobs",
+    response_model=list[ResearchJobResponse],
+    status_code=fastapi.status.HTTP_202_ACCEPTED,
+)
+def create_research_jobs(
+    collection_id: int,
+    data: ResearchJobsCreate,
+    db: criterium.ResearchDB = fastapi.Depends(get_db),
+):
     """
-    Queue product research and return immediately with its job status.
+    Queue one research job per product and return immediately with their statuses.
     """
     try:
-        return db.add_research_job(
+        return db.add_research_jobs(
             collection_id=collection_id,
-            product_info=data.product_info,
+            product_infos=data.product_infos,
         )
     except criterium.CollectionNotFoundError as e:
         raise fastapi.HTTPException(status_code=404, detail=str(e))
