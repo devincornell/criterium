@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 import criterium
 from google import genai
-from firecrawl import FirecrawlApp
+from firecrawl import Firecrawl
 from .config import settings
 from .api import router
 
@@ -14,7 +14,7 @@ async def lifespan(app: fastapi.FastAPI):
     # Initialize your clients using the pydantic settings
     # We use get_secret_value() because we defined them as SecretStr to prevent accidental logging
     app.state.ai_client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
-    app.state.fc_app = FirecrawlApp(api_key=settings.firecrawl_api_key.get_secret_value())
+    app.state.fc_app = Firecrawl(api_key=settings.firecrawl_api_key.get_secret_value())
     print("API Clients initialized successfully!")
 
     # Set up the database 
