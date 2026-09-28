@@ -17,6 +17,19 @@ make test
 make run
 ```
 
+## Docker
+
+Copy `.env.example` to `.env`, add valid `GEMINI_API_KEY` and
+`FIRECRAWL_API_KEY` values, then start the server:
+
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:8000/app>. The SQLite database is stored in the
+`criterium-data` Docker volume and survives container replacement. Stop the
+service with `docker compose down`; add `--volumes` to also delete its data.
+
 Tests replace external Gemini and Firecrawl calls with deterministic fakes. Live API calls are not part of the default test suite.
 
 The application uses the file-backed SQLite database `criterium.db` by default, so collections, jobs, and research results survive server restarts. Override its location with `DB_URL`; in-memory databases are intentionally unsupported.

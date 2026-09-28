@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+    init: true
+    ports:
+      - "8000:8000"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:?Set FIRECRAWL_API_KEY in .env}
+      DB_URL: sqlite:////data/criterium.db
+      RESEARCH_WORKER_CONCURRENCY: ${RESEARCH_WORKER_CONCURRENCY:-3}
+    volumes:
+      - criterium-data:/data
+    healthcheck:
+      test: ["CMD", "/workspace/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  criterium-data:

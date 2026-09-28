@@ -11,6 +11,9 @@ sync:
 test:
 	uv run --all-packages pytest --cov --cov-report=term-missing
 
+build:
+	sudo docker compose up --build
+
 # Clean up python caches and the virtual environment
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
